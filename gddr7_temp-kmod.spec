@@ -11,7 +11,7 @@ Summary:             Kernel module(s) to read RTX 5090 GDDR7 DQR temperature sen
 Group:               System Environment/Kernel
 
 License:             GPL
-URL:                 https://github.com/sunnyyangsunny/gddr7-temp
+URL:                 https://github.com/sunnyyangyangyang/gddr7-temp
 Source0:             gddr7_temp.c
 Source1:             Makefile
 
