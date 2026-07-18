@@ -3,6 +3,10 @@
 #define buildforkernels current
 #define buildforkernels akmod
 
+# Local build fallback: when 'kernels' is not pre-defined by COPR/Koji,
+# use the running kernel (stripped of .arch suffix) so kmodtool can resolve it.
+%{!?kernels:%global kernels %(uname -r | sed "s/\.[^.]*$//")}
+
 Name:                gddr7_temp-kmod
 Version:             1.0
 Release:             1%{?dist}.1
@@ -17,7 +21,12 @@ Source1:             Makefile
 
 BuildRequires:       %{_bindir}/kmodtool
 
+# COPR/Koji build: use RPM Fusion's buildsys meta-package to pull in kernel-devel for all target kernels
 %{!?kernels:BuildRequires: buildsys-build-rpmfusion-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
+
+# Local build (when 'kernels' is manually defined): use kernel-devel + kernel directly
+%{?kernels:BuildRequires: kernel-devel}
+%{?kernels:BuildRequires: kernel}
 
 # kmodtool does its magic here
 %{expand:%(kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{name} %{?buildforkernels:--%{buildforkernels}} %{?kernels:--for-kernels "%{?kernels}"} 2>/dev/null) }
