@@ -1,0 +1,61 @@
+%if 0%{?fedora}
+%global buildforkernels akmod
+%endif
+%global debug_package %{nil}
+%global kmod_name gddr7_temp
+
+Name:           gddr7_temp-kmod
+Version:        @GDDR7_TEMP_VERSION@
+Release:        @RELEASE@
+Summary:        gddr7_temp kernel module
+
+License:        GPL-2.0-only
+URL:            https://github.com/yourname/gddr7-temp
+Source0:        gddr7_temp-kmod-%{version}.tar.gz
+
+ExclusiveArch:  x86_64
+
+# get the needed BuildRequires (in parts depending on what we build for)
+%global AkmodsBuildRequires %{_bindir}/kmodtool
+BuildRequires: %{AkmodsBuildRequires}
+BuildRequires: gcc, make
+%{!?kernels:BuildRequires: buildsys-build-rpmfusion-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
+# kmodtool does its magic here
+%{expand:%(kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{kmod_name} %{?buildforkernels:--%{buildforkernels}} %{?kernels:--for-kernels "%{?kernels}"} 2>/dev/null) }
+
+%description
+The gddr7_temp %{version} kernel module for kernel %{kversion}.
+Reads the RTX 5090 (GB202) GDDR7 DQR temperature sensors directly via
+ioremap and exposes them through /proc/gddr7_temp.
+
+%prep
+# error out if there was something wrong with kmodtool
+%{?kmodtool_check}
+# print kmodtool output for debugging purposes:
+kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{kmod_name} %{?buildforkernels:--%{buildforkernels}} %{?kernels:--for-kernels "%{?kernels}"} 2>/dev/null
+%setup -q -c -T -a 0
+for kernel_version in %{?kernel_versions} ; do
+    cp -a gddr7_temp-kmod-%{version} _kmod_build_${kernel_version%%___*}
+done
+
+%build
+for kernel_version in %{?kernel_versions}; do
+    pushd _kmod_build_${kernel_version%%___*}/
+    %make_build \
+        KVER="${kernel_version%%___*}" \
+        KDIR="${kernel_version##*___}" \
+        modules
+    popd
+done
+
+%install
+for kernel_version in %{?kernel_versions}; do
+    mkdir -p $RPM_BUILD_ROOT/%{kmodinstdir_prefix}/${kernel_version%%___*}/%{kmodinstdir_postfix}/
+    install -D -m 0644 _kmod_build_${kernel_version%%___*}/gddr7_temp.ko \
+         $RPM_BUILD_ROOT/%{kmodinstdir_prefix}/${kernel_version%%___*}/%{kmodinstdir_postfix}/
+done
+%{?akmod_install}
+
+%changelog
+* Sat Jul 18 2026 you <you@example.com> - @GDDR7_TEMP_VERSION@-@RELEASE@
+- Follow nvidia-kmod/corefreq-kmod pattern for reliable kernel module building
