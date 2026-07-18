@@ -8,27 +8,20 @@
 // register that simply isn't privilege-locked, it doesn't defeat any
 // hardware protection. Read-only, no writes to GPU MMIO anywhere.
 //
-// Safety notes (v2):
+// Safety notes (v3 - PM Conservative):
 //  - The DQR register block is ioremap'd ONCE at module load and
-//    iounmap'd at unload. Per-read ioremap/iounmap was removed: doing
-//    that on every /proc read caused kernel page table churn and TLB
-//    shootdowns on every call, which is a real local-DoS surface since
-//    the proc file was world-readable.
-//  - Before touching MMIO we call pm_runtime_get_sync() on the GPU's
-//    PCI device to force it out of a low-power state (D3hot/D3cold)
-//    for the duration of the read, then pm_runtime_put_autosuspend()
-//    to let it go back to sleep afterward. Reading BAR space while the
-//    device is powered down can produce a PCIe Unsupported Request /
-//    Completer Abort, which on some platforms escalates to an MCE.
+//    iounmap'd at unload. Avoids TLB shootdowns and page table churn
+//    on every /proc read.
+//  - We use pm_runtime_get_sync() + pm_runtime_put() to safely wrap MMIO
+//    reads. We DO NOT alter the device's global autosuspend configs in init(),
+//    so we don't clobber the proprietary nvidia.ko driver's PM state machine
+//    (especially on Optimus/PRIME setups). For desktop GPUs where runtime PM
+//    is often disabled by the driver, get_sync gracefully acts as a safe no-op
+//    rather than silently failing and dropping readings during high load.
 //  - Any register read that comes back as 0xFFFFFFFF is treated as a
-//    failed/invalid bus read and discarded, rather than being decoded
-//    as if it were real sensor data (an all-1s DQR validity word
-//    would otherwise coincidentally look "valid").
-//  - BAR0 length is checked against the address range this module
-//    touches before mapping anything.
-//  - /proc/gddr7_temp is root-only (0400) as defense in depth, even
-//    though the hot path is now just a handful of MMIO reads instead
-//    of remap operations.
+//    failed/invalid bus read (e.g. D3cold/completer abort) and discarded.
+//  - BAR0 length is checked before mapping.
+//  - /proc/gddr7_temp is root-only (0400) as defense in depth.
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -94,34 +87,49 @@ static bool gddr7_read_module(int module_idx, int *out_c)
     return true;
 }
 
-/* Wake the GPU (best-effort) and read every present module. Fills
- * temps[]/returns count, and *hottest. Always releases the runtime PM
- * reference it took, even on early failure paths. */
+/* Wake the GPU (best-effort) and read every present module.
+ *
+ * We intentionally use pm_runtime_resume_and_get() instead of
+ * pm_runtime_get_sync(). The newer helper guarantees that the
+ * runtime PM usage counter is not incremented on failure, avoiding
+ * ambiguous unwind paths when runtime PM is disabled or resume
+ * fails.
+ *
+ * Always drops the runtime PM reference acquired on success.
+ */
 static int gddr7_read_modules(int temps[], int *hottest)
 {
-    int count = 0, hot = -128, p;
+    int count = 0;
+    int hot = -128;
     int pm_ret;
+    int p;
 
-    pm_ret = pm_runtime_get_sync(&gpu_dev->dev);
+    pm_ret = pm_runtime_resume_and_get(&gpu_dev->dev);
     if (pm_ret < 0) {
-        /* Device couldn't be woken (e.g. surprise-removed). Back off
-         * the usage counter we just took and report "no data" rather
-         * than touching MMIO on a device that may not be there. */
-        pm_runtime_put_noidle(&gpu_dev->dev);
+        /* Runtime PM is disabled, the device disappeared, or the
+         * resume operation failed. Nothing was acquired, so there is
+         * nothing to unwind here.
+         */
         return 0;
     }
 
     for (p = 0; p < DQR_MAX_MODULES; p++) {
         int c;
+
         if (!gddr7_read_module(p, &c))
             continue;
+
         temps[count++] = c;
+
         if (c > hot)
             hot = c;
     }
 
-    pm_runtime_mark_last_busy(&gpu_dev->dev);
-    pm_runtime_put_autosuspend(&gpu_dev->dev);
+    /* Drop the runtime PM reference acquired above. We intentionally
+     * do not alter autosuspend policies or timings so as not to
+     * interfere with the NVIDIA driver's own PM state machine.
+     */
+    pm_runtime_put(&gpu_dev->dev);
 
     *hottest = hot;
     return count;
@@ -193,11 +201,6 @@ static int __init gddr7_temp_init(void)
         gpu_dev = NULL;
         goto out_no_gpu;
     }
-
-    /* Let runtime PM auto-suspend the device again ~2s after our last
-     * read instead of forcing it to stay awake or sleep immediately. */
-    pm_runtime_set_autosuspend_delay(&gpu_dev->dev, 2000);
-    pm_runtime_use_autosuspend(&gpu_dev->dev);
 
     dqr_base = ioremap(pci_resource_start(gpu_dev, 0) + DQR_MODULE0, DQR_SPAN);
     if (!dqr_base) {
