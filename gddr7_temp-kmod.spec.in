@@ -1,25 +1,29 @@
 %if 0%{?fedora}
 %global buildforkernels akmod
 %endif
+
 %global debug_package %{nil}
 %global kmod_name gddr7_temp
 
 Name:           gddr7_temp-kmod
 Version:        @GDDR7_TEMP_VERSION@
 Release:        @RELEASE@
-Summary:        gddr7_temp kernel module
+Summary:        gddr7_temp kernel module for RTX 5090 GDDR7 temperature reading
 
 License:        GPL-2.0-only
-URL:            https://github.com/yourname/gddr7-temp
+URL:            https://github.com/sunnyyangyangyang/gddr7-temp
+
 Source0:        gddr7_temp-kmod-%{version}.tar.gz
 
 ExclusiveArch:  x86_64
 
 # get the needed BuildRequires (in parts depending on what we build for)
 %global AkmodsBuildRequires %{_bindir}/kmodtool
-BuildRequires: %{AkmodsBuildRequires}
-BuildRequires: gcc, make
+BuildRequires:  %{AkmodsBuildRequires}
+BuildRequires:  gcc, make
+
 %{!?kernels:BuildRequires: buildsys-build-rpmfusion-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
+
 # kmodtool does its magic here
 %{expand:%(kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{kmod_name} %{?buildforkernels:--%{buildforkernels}} %{?kernels:--for-kernels "%{?kernels}"} 2>/dev/null) }
 
@@ -31,9 +35,12 @@ ioremap and exposes them through /proc/gddr7_temp.
 %prep
 # error out if there was something wrong with kmodtool
 %{?kmodtool_check}
+
 # print kmodtool output for debugging purposes:
 kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{kmod_name} %{?buildforkernels:--%{buildforkernels}} %{?kernels:--for-kernels "%{?kernels}"} 2>/dev/null
+
 %setup -q -c -T -a 0
+
 for kernel_version in %{?kernel_versions} ; do
     cp -a gddr7_temp-kmod-%{version} _kmod_build_${kernel_version%%___*}
 done
@@ -57,5 +64,5 @@ done
 %{?akmod_install}
 
 %changelog
-* Sat Jul 18 2026 you <you@example.com> - @GDDR7_TEMP_VERSION@-@RELEASE@
+* Sun Jul 19 2026 Sunny Yang <yxh9956@gmail.com> - @GDDR7_TEMP_VERSION@-@RELEASE@
 - Follow nvidia-kmod/corefreq-kmod pattern for reliable kernel module building
