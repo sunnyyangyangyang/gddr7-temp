@@ -20,7 +20,7 @@ Source1:             Makefile
 
 BuildRequires:       %{_bindir}/kmodtool
 # Local build: ensure kernel-devel for the running kernel is available
-BuildRequires:       kernel-devel-%{_target_cpu} = %(uname -r)
+BuildRequires:       kernel-devel = %(uname -r)
 
 %{!?kernels:BuildRequires: buildsys-build-rpmfusion-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
 
