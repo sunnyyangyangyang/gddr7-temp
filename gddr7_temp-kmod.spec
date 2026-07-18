@@ -16,6 +16,9 @@ Source0:             gddr7_temp.c
 Source1:             Makefile
 
 BuildRequires:       %{_bindir}/kmodtool
+# Local build fallback: auto-detect running kernel (no-op in COPR/Koji)
+%{!?kernels:%global kernels %(uname -r | sed 's/\.[^.]*$//')}
+
 # In COPR/Koji (kernels not pre-defined): use RPM Fusion buildsys meta-package.
 %{!?kernels:BuildRequires: buildsys-build-rpmfusion-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
 
@@ -58,7 +61,7 @@ for kernel_version in %{?kernel_versions}; do
     install -D -m 755 _kmod_build_${kernel_version%%___*}/gddr7_temp.ko \
         ${RPM_BUILD_ROOT}%{kmodinstdir_prefix}/${kernel_version%%___*}/%{kmodinstdir_postfix}gddr7_temp.ko
 done
-chmod u+x ${RPM_BUILD_ROOT}/lib/modules/*/extra/*
+chmod u+x ${RPM_BUILD_ROOT}/lib/modules/*/extra/* || true
 
 %{?akmod_install}
 
