@@ -1,10 +1,7 @@
 # (un)define the next line to either build for the newest or all current kernels
-#define buildforkernels newest
+%define buildforkernels newest
 #define buildforkernels current
-%define buildforkernels akmod
-
-# Local build fallback: override with --define "kernels $(uname -r)" if needed
-%{!?kernels:%global kernels %(uname -r)}
+#define buildforkernels akmod
 
 Name:                gddr7_temp-kmod
 Version:             1.0
@@ -19,8 +16,6 @@ Source0:             gddr7_temp.c
 Source1:             Makefile
 
 BuildRequires:       %{_bindir}/kmodtool
-# Local build: ensure kernel-devel for the running kernel is available
-BuildRequires:       kernel-devel = %(uname -r)
 
 %{!?kernels:BuildRequires: buildsys-build-rpmfusion-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
 
