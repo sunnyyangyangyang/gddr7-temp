@@ -1,7 +1,7 @@
 # (un)define the next line to either build for the newest or all current kernels
-%define buildforkernels newest
+#define buildforkernels newest
 #define buildforkernels current
-#define buildforkernels akmod
+%define buildforkernels akmod
 
 Name:                gddr7_temp-kmod
 Version:             1.0
@@ -16,21 +16,15 @@ Source0:             gddr7_temp.c
 Source1:             Makefile
 
 BuildRequires:       %{_bindir}/kmodtool
-
-# --- Build mode selection -----------------------------------
 # In COPR/Koji (kernels not pre-defined): use RPM Fusion buildsys meta-package.
 %{!?kernels:BuildRequires: buildsys-build-rpmfusion-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
 
-# Local build (kernels pre-defined via --define): use kernel-devel directly.
+# Local build (kernels pre-defined via --define): use kernel-devel + akmods directly.
 %{?kernels:BuildRequires: kernel-devel}
-%{?kernels:BuildRequires: kernel}
+%{?kernels:BuildRequires: akmods}
 
-# kmodtool magic: in COPR/Koji, pass --newest/--current; locally, only --for-kernels.
-%{!?kernels:%{expand:%(kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{name} %{?buildforkernels:--%{buildforkernels}} 2>/dev/null) }}
-%{?kernels:%{expand:%(kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{name} --for-kernels "%{kernels}" 2>/dev/null) }}
-
-# Local build: auto-detect running kernel if not overridden.
-%{!?kernels:%global kernels %(uname -r)}
+# kmodtool magic for akmod mode
+%{expand:%(kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{name} %{?buildforkernels:--%{buildforkernels}} 2>/dev/null) }
 
 %description
 gddr7_temp is a kernel module that reads the RTX 5090 (GB202) GDDR7 DQR
