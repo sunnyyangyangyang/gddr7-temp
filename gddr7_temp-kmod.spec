@@ -3,10 +3,6 @@
 #define buildforkernels current
 #define buildforkernels akmod
 
-# Local build fallback: when 'kernels' is not pre-defined by COPR/Koji,
-# use the running kernel (stripped of .arch suffix) so kmodtool can resolve it.
-%{!?kernels:%global kernels %(uname -r | sed "s/\.[^.]*$//")}
-
 Name:                gddr7_temp-kmod
 Version:             1.0
 Release:             1%{?dist}.1
@@ -21,15 +17,20 @@ Source1:             Makefile
 
 BuildRequires:       %{_bindir}/kmodtool
 
-# COPR/Koji build: use RPM Fusion's buildsys meta-package to pull in kernel-devel for all target kernels
+# --- Build mode selection -----------------------------------
+# In COPR/Koji (kernels not pre-defined): use RPM Fusion buildsys meta-package.
 %{!?kernels:BuildRequires: buildsys-build-rpmfusion-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
 
-# Local build (when 'kernels' is manually defined): use kernel-devel + kernel directly
+# Local build (kernels pre-defined via --define): use kernel-devel directly.
 %{?kernels:BuildRequires: kernel-devel}
 %{?kernels:BuildRequires: kernel}
 
-# kmodtool does its magic here
-%{expand:%(kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{name} %{?buildforkernels:--%{buildforkernels}} %{?kernels:--for-kernels "%{?kernels}"} 2>/dev/null) }
+# kmodtool magic: in COPR/Koji, pass --newest/--current; locally, only --for-kernels.
+%{!?kernels:%{expand:%(kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{name} %{?buildforkernels:--%{buildforkernels}} 2>/dev/null) }}
+%{?kernels:%{expand:%(kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{name} --for-kernels "%{kernels}" 2>/dev/null) }}
+
+# Local build: auto-detect running kernel if not overridden.
+%{!?kernels:%global kernels %(uname -r)}
 
 %description
 gddr7_temp is a kernel module that reads the RTX 5090 (GB202) GDDR7 DQR
@@ -43,9 +44,6 @@ defeating any hardware protection.
 %prep
 # error out if there was something wrong with kmodtool
 %{?kmodtool_check}
-
-# print kmodtool output for debugging purposes:
-kmodtool --target %{_target_cpu} --repo rpmfusion --kmodname %{name} %{?buildforkernels:--%{buildforkernels}} %{?kernels:--for-kernels "%{?kernels}"} 2>/dev/null
 
 mkdir -p gddr7_temp-kmod-1.0
 cp -a %{SOURCE0} %{SOURCE1} gddr7_temp-kmod-1.0/
