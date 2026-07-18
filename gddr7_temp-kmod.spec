@@ -3,6 +3,9 @@
 #define buildforkernels current
 %define buildforkernels akmod
 
+# Local build fallback: override with --define "kernels $(uname -r)" if needed
+%{!?kernels:%global kernels %(uname -r)}
+
 Name:                gddr7_temp-kmod
 Version:             1.0
 Release:             1%{?dist}.1
