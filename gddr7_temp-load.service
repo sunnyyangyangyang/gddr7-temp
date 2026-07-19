@@ -1,0 +1,18 @@
+[Unit]
+Description=gddr7_temp Kernel Module Loader
+Documentation=https://github.com/sunnyyangyangyang/gddr7-temp
+After=akmods.service basic.target sysinit.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+ExecStart=/sbin/modprobe gddr7_temp
+ExecStop=-/sbin/modprobe -r gddr7_temp
+
+TimeoutStartSec=30
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

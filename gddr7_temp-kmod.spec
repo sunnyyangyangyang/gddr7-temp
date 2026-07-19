@@ -3,11 +3,11 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 1.0
+%global gddr7_temp_version 2
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
-Release:        2%{?dist}
+Release:        1%{?dist}
 Summary:        Kernel module to read RTX 5090 GDDR7 DQR temperature sensors
 
 License:        GPL-2.0-only
@@ -16,14 +16,17 @@ Source0:        gddr7_temp.c
 Source1:        Makefile
 Source2:        gddr7_temp-kmod.spec.in
 Source3:        LICENSE
+Source4:        gddr7_temp-load.service
 
 # Akmod BuildRequires
 BuildRequires:  kmodtool
 BuildRequires:  akmods
 BuildRequires:  gcc make rpm-build
 BuildRequires:  kernel-devel
+BuildRequires:  systemd-rpm-macros
 
 # Runtime Requirements
+Requires:       systemd
 
 Requires:       %{name}-kmod = %{?epoch:%{epoch}:}%{version}-%{release}
 Requires:       %{name}-kmod-common = %{?epoch:%{epoch}:}%{version}-%{release}
@@ -58,6 +61,7 @@ This package provides the common dependency anchor for the %{name} kernel module
 cp %{SOURCE0} .
 cp %{SOURCE1} .
 cp %{SOURCE3} .
+cp %{SOURCE4} .
 
 %install
 # --- Create and install the kmod SRPM for akmods ---
@@ -93,24 +97,27 @@ cat > %{buildroot}%{_dracut_conf_d}/99-gddr7_temp.conf << EOF
 omit_drivers+=" gddr7_temp "
 EOF
 
+# --- Systemd service ---
+install -D -m 0644 %{SOURCE4} %{buildroot}%{_unitdir}/gddr7_temp-load.service
+
 %post
-# Generate akmods signing key if it doesn't exist
-if [ ! -f /etc/pki/akmods/certs/public_key.der ]; then
-    echo "Generating akmods signing keys..."
-    /usr/sbin/kmodgenca -a 2>/dev/null || true
-fi
+%systemd_post gddr7_temp-load.service
+systemctl enable gddr7_temp-load.service >/dev/null 2>&1 || true
 
 %preun
+%systemd_preun gddr7_temp-load.service
+
 if [ $1 -eq 0 ]; then
     # Complete uninstall: try to remove the kernel module
     /sbin/modprobe -r gddr7_temp >/dev/null 2>&1 || true
 fi
 
 %postun
-# Nothing to do on upgrade/uninstall
+%systemd_postun gddr7_temp-load.service
 
 %files
 %license LICENSE
+%{_unitdir}/gddr7_temp-load.service
 %{_dracut_conf_d}/99-gddr7_temp.conf
 
 # Akmod files are handled by kmodtool (line 32).
@@ -119,6 +126,16 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Sun Jul 19 2026 Sunny Yang <yxh9956@gmail.com> - 2-1
+- Add gddr7_temp-load.service: oneshot systemd service for auto-loading at boot
+- Service runs after akmods to ensure module is compiled before loading
+- Use systemd-rpm-macros (%systemd_post/preun/postun) + explicit systemctl enable
+
+* Sun Jul 19 2026 Sunny Yang <yxh9956@gmail.com> - 1.0-3
+- Add gddr7_temp-load.service: oneshot systemd service for auto-loading at boot
+- Service runs after akmods to ensure module is compiled before loading
+- Use systemd-rpm-macros for proper service lifecycle management
+
 * Sun Jul 19 2026 Sunny Yang <yxh9956@gmail.com> - 1.0-2
 - Remove unsupported --pattern flag from kmodtool call
 - Fix: kmodtool expand now generates posttrans to trigger akmods on install
