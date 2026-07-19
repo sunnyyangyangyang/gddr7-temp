@@ -3,11 +3,11 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 2
+%global gddr7_temp_version 2.5
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
-Release:        2%{?dist}
+Release:        1%{?dist}
 Summary:        Kernel module to read RTX 5090 GDDR7 DQR temperature sensors
 
 License:        GPL-2.0-only
@@ -126,6 +126,9 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Mon Jul 20 2026 Sunny Yang <yxh9956@gmail.com> - 2.5-1
+- Update kernel module to version 2.5
+
 * Sun Jul 19 2026 Sunny Yang <yxh9956@gmail.com> - 2-2
 - Remove kmodgenca from %post (akmods handles signing keys)
 - Add explicit systemctl enable after %%systemd_post
