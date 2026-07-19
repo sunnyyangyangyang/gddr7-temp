@@ -7,7 +7,7 @@
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Kernel module to read RTX 5090 GDDR7 DQR temperature sensors
 
 License:        GPL-2.0-only
@@ -126,10 +126,14 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Sun Jul 19 2026 Sunny Yang <yxh9956@gmail.com> - 2-2
+- Remove kmodgenca from %post (akmods handles signing keys)
+- Add explicit systemctl enable after %%systemd_post
+
 * Sun Jul 19 2026 Sunny Yang <yxh9956@gmail.com> - 2-1
 - Add gddr7_temp-load.service: oneshot systemd service for auto-loading at boot
 - Service runs after akmods to ensure module is compiled before loading
-- Use systemd-rpm-macros (%systemd_post/preun/postun) + explicit systemctl enable
+- Use systemd-rpm-macros (%%systemd_post/preun/postun) + explicit systemctl enable
 
 * Sun Jul 19 2026 Sunny Yang <yxh9956@gmail.com> - 1.0-3
 - Add gddr7_temp-load.service: oneshot systemd service for auto-loading at boot
