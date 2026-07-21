@@ -96,12 +96,8 @@ watch -n 1 sensors
 A systemd oneshot service (`gddr7_temp-load.service`) is installed alongside the module. It loads `gddr7_temp` after akmods finishes compiling, so the sensor data is available early in the boot process:
 
 ```bash
-# Enable (done automatically by RPM post script)
-pkexec systemctl enable gddr7_temp-load.service
-
-# Manual load / unload
-pkexec modprobe gddr7_temp
-pkexec modprobe -r gddr7_temp
+# Enable at boot (RPM post script does this). Add --now to load immediately:
+sudo systemctl enable --now gddr7_temp-load.service
 ```
 
 ## Safety notes
