@@ -471,5 +471,5 @@ module_init(gddr7_temp_init);
 module_exit(gddr7_temp_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("you");
+MODULE_AUTHOR("Sunny Yang <yxh9956@gmail.com>");
 MODULE_DESCRIPTION("Read RTX 5090 GDDR7 DQR + THERM internal hotspot sensors via hwmon");

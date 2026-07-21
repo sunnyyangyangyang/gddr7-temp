@@ -7,7 +7,7 @@
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Kernel module to read RTX 5090 GDDR7 DQR temperature sensors
 
 License:        GPL-2.0-only
@@ -36,8 +36,8 @@ Requires:       %{name}-kmod-common = %{?epoch:%{epoch}:}%{version}-%{release}
 
 %description
 gddr7_temp is a kernel module that reads the RTX 5090 (GB202) GDDR7 DQR
-temperature sensors directly via ioremap and exposes them through
-/proc/gddr7_temp.
+and THERM internal hotspot temperature sensors directly via ioremap and
+exposes them through the Linux hwmon subsystem.
 
 This module is reverse-engineered and unofficial. It performs read-only
 access to GPU MMIO registers that are not privilege-locked, without
@@ -126,6 +126,10 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Tue Jul 21 2026 Sunny Yang <yxh9956@gmail.com> - 3.0-2
+- Fix spec description: /proc/gddr7_temp -> hwmon subsystem
+- Update MODULE_AUTHOR to "Sunny Yang"
+
 * Mon Jul 20 2026 Sunny Yang <yxh9956@gmail.com> - 2.5-1
 - Update kernel module to version 2.5
 
