@@ -11,3 +11,6 @@ compile_commands.json
 ..*.cmd
 Module.symvers
 modules.order
+
+# local manual build dir (optional, for testing outside of spec)
+build/
