@@ -1,8 +1,6 @@
 # .clangd — config for linting this kernel module with clangd.
 # Place in project root alongside compile_commands.json.
-#
-# compile_commands.json uses $KDIR env var. Set it before launching your editor:
-#   export KDIR=/lib/modules/$(uname -r)/build
+# Generate compile_commands.json:  make ide
 
 CompileFlags:
   # Suppress clang-vs-gcc struct layout differences that trigger false static_assert failures
