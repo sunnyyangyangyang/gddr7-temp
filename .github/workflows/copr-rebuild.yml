@@ -1,0 +1,15 @@
+name: Copr Auto Rebuild
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  trigger-copr-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poke Copr Custom Webhook
+        run: |
+          curl -fsSL -X POST "$COPR_WEBHOOK_URL"
+        env:
+          COPR_WEBHOOK_URL: ${{ secrets.COPR_WEBHOOK_URL }}
