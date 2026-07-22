@@ -13,7 +13,7 @@ KDIR  ?=
 gpu_offsets_generated.h: offsets.yaml scripts/gen_offsets.py
 	python3 scripts/gen_offsets.py $< $@
 
-.PHONY: modules modules_install clean
+.PHONY: modules modules_install clean ide
 
 modules: gpu_offsets_generated.h
 	@[ -n "$(KVER)" ] || { echo "ERROR: KVER not set"; exit 1; }
@@ -23,6 +23,13 @@ modules: gpu_offsets_generated.h
 modules_install:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
 
+# Generate compile_commands.json for clangd/IDE support.
+# Resolves kernel paths dynamically — no hardcoded KVER or absolute home path.
+ide:
+	@REAL_KDIR=$$(readlink -f /lib/modules/$$(uname -r)/build); \
+	python3 scripts/gen_compile_commands.py $(PWD) "$$REAL_KDIR"; \
+	echo "Generated compile_commands.json (KDIR=$$REAL_KDIR)"
+
 clean:
-	rm -f gpu_offsets_generated.h
+	rm -f gpu_offsets_generated.h compile_commands.json
 	$(MAKE) -C $(KDIR) M=$(PWD) clean
