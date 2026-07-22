@@ -19,8 +19,8 @@ Source3:        LICENSE
 Source4:        gddr7_temp-load.service
 Source5:        gpu_offsets.h
 Source6:        offsets.yaml
-Source7:        scripts/gen_offsets.py
-Source8:        scripts/gen_compile_commands.py
+Source7:        gen_offsets.py
+Source8:        gen_compile_commands.py
 
 # Akmod BuildRequires
 BuildRequires:  kmodtool
@@ -70,9 +70,8 @@ cp %{SOURCE3} .
 cp %{SOURCE4} .
 cp %{SOURCE5} .
 cp %{SOURCE6} .
-mkdir -p scripts
-cp %{SOURCE7} scripts/
-cp %{SOURCE8} scripts/
+cp %{SOURCE7} .
+cp %{SOURCE8} .
 
 %install
 # --- Create and install the kmod SRPM for akmods ---

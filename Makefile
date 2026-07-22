@@ -4,8 +4,8 @@ KVER  ?=
 KDIR  ?=
 
 # Codegen: generate gpu_offsets_generated.h from offsets.yaml + script.
-gpu_offsets_generated.h: offsets.yaml scripts/gen_offsets.py
-	python3 scripts/gen_offsets.py $< $@
+gpu_offsets_generated.h: offsets.yaml gen_offsets.py
+	python3 gen_offsets.py $< $@
 
 .PHONY: modules modules_install clean ide
 
@@ -20,7 +20,7 @@ modules_install:
 # Generate compile_commands.json for clangd/IDE support.
 ide:
 	@REAL_KDIR=$$(readlink -f /lib/modules/$$(uname -r)/build); \
-	python3 scripts/gen_compile_commands.py $(PWD) "$$REAL_KDIR"; \
+	python3 gen_compile_commands.py $(PWD) "$$REAL_KDIR"; \
 	echo "Generated compile_commands.json (KDIR=$$REAL_KDIR)"
 
 clean:
