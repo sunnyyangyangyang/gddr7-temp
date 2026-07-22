@@ -8,9 +8,14 @@ obj-m := gddr7_temp.o
 KVER  ?=
 KDIR  ?=
 
+# Codegen: generate gpu_offsets_generated.h from offsets.yaml + script.
+# Must run before compiling .c so the generated header is present.
+gpu_offsets_generated.h: offsets.yaml scripts/gen_offsets.py
+	python3 scripts/gen_offsets.py $< $@
+
 .PHONY: modules modules_install clean
 
-modules:
+modules: gpu_offsets_generated.h
 	@[ -n "$(KVER)" ] || { echo "ERROR: KVER not set"; exit 1; }
 	@[ -n "$(KDIR)" ] || { echo "ERROR: KDIR not set"; exit 1; }
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
@@ -19,4 +24,5 @@ modules_install:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
 
 clean:
+	rm -f gpu_offsets_generated.h
 	$(MAKE) -C $(KDIR) M=$(PWD) clean
