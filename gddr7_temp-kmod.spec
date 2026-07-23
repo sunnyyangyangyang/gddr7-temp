@@ -25,7 +25,7 @@ Source8:        gen_compile_commands.py
 # Akmod BuildRequires
 BuildRequires:  kmodtool
 BuildRequires:  akmods
-BuildRequires:  gcc make rpm-build python3
+BuildRequires:  gcc make rpm-build python3 python3-pyyaml
 BuildRequires:  kernel-devel
 BuildRequires:  systemd-rpm-macros
 

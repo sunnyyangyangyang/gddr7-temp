@@ -13,6 +13,11 @@ def to_c_hex(v):
     return hex(int(v))
 
 
+def escape_c_string(s: str) -> str:
+    """Escape backslashes and double quotes for C string literals."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def main(yaml_path, out_path):
     with open(yaml_path) as f:
         tables = yaml.safe_load(f)
@@ -33,7 +38,7 @@ def main(yaml_path, out_path):
         seen_ids.add(dev_id)
 
         lines.append(
-            f'    {{ .device_id = 0x{dev_id:04x}, .name = "{t["name"]}",\n'
+            f'    {{ .device_id = 0x{dev_id:04x}, .name = "{escape_c_string(t["name"])}",\n'
             f'      .dqr_module0 = {to_c_hex(t["dqr"]["module0"])}, '
             f'.dqr_vld_off = {to_c_hex(t["dqr"]["vld_off"])},\n'
             f'      .dqr_stride = {to_c_hex(t["dqr"]["stride"])}, '
