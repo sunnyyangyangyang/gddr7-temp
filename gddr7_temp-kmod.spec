@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 3.1
+%global gddr7_temp_version 3.2
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
