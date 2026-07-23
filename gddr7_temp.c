@@ -332,7 +332,6 @@ static int __init gddr7_temp_init(void)
     struct pci_dev *cand = NULL;
     resource_size_t bar0_len;
     resource_size_t dqr_span, therm_span;
-    resource_size_t needed;
     int n_dqr_sensors, n_therm_sensors;
     int ret;
     int i;
@@ -352,31 +351,47 @@ static int __init gddr7_temp_init(void)
         return -ENODEV;
     }
 
-    /* Sanity-check table fields to catch YAML typos early. */
-    if (active_table->dqr_num_modules <= 0 || active_table->dqr_num_modules > GPU_MAX_DQR_MODULES) {
+    /* Sanity-check table fields. num == 0 means that block is absent;
+     * at least one must be present. */
+    if (active_table->dqr_num_modules < 0 || active_table->dqr_num_modules > GPU_MAX_DQR_MODULES) {
         pr_err("gddr7_temp: invalid dqr_num_modules %d for %s\n",
                active_table->dqr_num_modules, active_table->name);
         ret = -EINVAL;
         goto err_put;
     }
-    if (active_table->therm_num_channels <= 0 || active_table->therm_num_channels > GPU_MAX_THERM_CHS) {
+    if (active_table->therm_num_channels < 0 || active_table->therm_num_channels > GPU_MAX_THERM_CHS) {
         pr_err("gddr7_temp: invalid therm_num_channels %d for %s\n",
                active_table->therm_num_channels, active_table->name);
         ret = -EINVAL;
         goto err_put;
     }
+    if (active_table->dqr_num_modules == 0 && active_table->therm_num_channels == 0) {
+        pr_err("gddr7_temp: %s defines no sensors at all\n", active_table->name);
+        ret = -EINVAL;
+        goto err_put;
+    }
 
-    /* Compute runtime spans from table. */
-    dqr_span = (resource_size_t)(active_table->dqr_num_modules - 1) * active_table->dqr_stride
-               + active_table->dqr_vld_off + sizeof(u32);
-    therm_span = (resource_size_t)(active_table->therm_num_channels - 1) * active_table->therm_ch_stride
-                 + sizeof(u32);
+    bool has_dqr   = active_table->dqr_num_modules   > 0;
+    bool has_therm = active_table->therm_num_channels > 0;
+
+    /* Compute runtime spans from table. Skip absent blocks to avoid
+     * underflow on (num - 1) when num == 0. */
+    resource_size_t needed = 0;
+
+    if (has_dqr) {
+        dqr_span = (resource_size_t)(active_table->dqr_num_modules - 1) * active_table->dqr_stride
+                   + active_table->dqr_vld_off + sizeof(u32);
+        needed = active_table->dqr_module0 + dqr_span;
+    }
+
+    if (has_therm) {
+        therm_span = (resource_size_t)(active_table->therm_num_channels - 1) * active_table->therm_ch_stride
+                     + sizeof(u32);
+        if (active_table->therm_ch0 + therm_span > needed)
+            needed = active_table->therm_ch0 + therm_span;
+    }
 
     bar0_len = pci_resource_len(gpu_dev, 0);
-
-    needed = active_table->dqr_module0 + dqr_span;
-    if (active_table->therm_ch0 + therm_span > needed)
-        needed = active_table->therm_ch0 + therm_span;
 
     if (bar0_len < needed) {
         pr_err("gddr7_temp: BAR0 too small (0x%llx bytes), refusing to map\n",
@@ -394,24 +409,29 @@ static int __init gddr7_temp_init(void)
         goto err_put;
     }
 
-    dqr_base = ioremap(pci_resource_start(gpu_dev, 0) + active_table->dqr_module0, dqr_span);
-    if (!dqr_base) {
-        pr_err("gddr7_temp: ioremap of DQR region failed\n");
-        ret = -ENOMEM;
-        goto err_disable;
+    if (has_dqr) {
+        dqr_base = ioremap(pci_resource_start(gpu_dev, 0) + active_table->dqr_module0, dqr_span);
+        if (!dqr_base) {
+            pr_err("gddr7_temp: ioremap of DQR region failed\n");
+            ret = -ENOMEM;
+            goto err_disable;
+        }
     }
 
-    therm_base = ioremap(pci_resource_start(gpu_dev, 0) + active_table->therm_ch0, therm_span);
-    if (!therm_base) {
-        pr_err("gddr7_temp: ioremap of THERM region failed\n");
-        ret = -ENOMEM;
-        goto err_unmap_dqr;
+    if (has_therm) {
+        therm_base = ioremap(pci_resource_start(gpu_dev, 0) + active_table->therm_ch0, therm_span);
+        if (!therm_base) {
+            pr_err("gddr7_temp: ioremap of THERM region failed\n");
+            ret = -ENOMEM;
+            goto err_unmap_dqr;
+        }
     }
 
     /* Build dynamic sensor array. Layout:
-     * [DQR hotspot][DQR modules...][THERM channels...][THERM hotspot] */
-    n_dqr_sensors  = active_table->dqr_num_modules + 1;   /* +1 for DQR hotspot */
-    n_therm_sensors = active_table->therm_num_channels + 1; /* +1 for THERM hotspot */
+     * [DQR hotspot?][DQR modules...][THERM channels...][THERM hotspot?]
+     * Absent blocks contribute zero sensors (no hotspot either). */
+    n_dqr_sensors   = has_dqr   ? active_table->dqr_num_modules + 1 : 0;
+    n_therm_sensors = has_therm ? active_table->therm_num_channels + 1 : 0;
     num_total_sensors = n_dqr_sensors + n_therm_sensors;
 
     gpu_sensors = kcalloc(num_total_sensors, sizeof(*gpu_sensors), GFP_KERNEL);
@@ -426,37 +446,44 @@ static int __init gddr7_temp_init(void)
         goto err_free_sensors;
     }
 
-    /* DQR hotspot (index 0) */
-    gpu_sensors[0].family   = FAM_GDDR7;
-    gpu_sensors[0].idx      = -1;
-    gpu_sensors[0].chip_name = kasprintf(GFP_KERNEL, "gddr7hotspot");
-    gpu_sensors[0].label     = "hotspot";
-
-    /* DQR modules (indices 1..n) */
-    for (i = 0; i < active_table->dqr_num_modules; i++) {
-        int pos = i + 1;
+    /* DQR hotspot (first index) */
+    if (has_dqr) {
+        int pos = 0;
         gpu_sensors[pos].family   = FAM_GDDR7;
-        gpu_sensors[pos].idx      = i;
-        gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "gddr7mod%d", i);
-        gpu_sensors[pos].label     = gpu_sensors[pos].chip_name;  /* same string */
-    }
-
-    /* THERM channels (indices n_dqr..n) */
-    for (i = 0; i < active_table->therm_num_channels; i++) {
-        int pos = n_dqr_sensors + i;
-        gpu_sensors[pos].family   = FAM_THERM;
-        gpu_sensors[pos].idx      = i;
-        gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "thermch%d", i);
-        gpu_sensors[pos].label     = gpu_sensors[pos].chip_name;  /* same string */
-    }
-
-    /* THERM hotspot (last index) */
-    {
-        int pos = num_total_sensors - 1;
-        gpu_sensors[pos].family   = FAM_THERM;
         gpu_sensors[pos].idx      = -1;
-        gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "thermhotspot");
-        gpu_sensors[pos].label     = "hotspot_max";
+        gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "gddr7hotspot");
+        gpu_sensors[pos].label     = "hotspot";
+
+        /* DQR modules */
+        for (i = 0; i < active_table->dqr_num_modules; i++) {
+            pos = i + 1;
+            gpu_sensors[pos].family   = FAM_GDDR7;
+            gpu_sensors[pos].idx      = i;
+            gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "gddr7mod%d", i);
+            gpu_sensors[pos].label     = gpu_sensors[pos].chip_name;  /* same string */
+        }
+    }
+
+    /* THERM channels + hotspot — appended after DQR block */
+    if (has_therm) {
+        int base = n_dqr_sensors;
+
+        for (i = 0; i < active_table->therm_num_channels; i++) {
+            int pos = base + i;
+            gpu_sensors[pos].family   = FAM_THERM;
+            gpu_sensors[pos].idx      = i;
+            gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "thermch%d", i);
+            gpu_sensors[pos].label     = gpu_sensors[pos].chip_name;  /* same string */
+        }
+
+        /* THERM hotspot (last index) */
+        {
+            int pos = num_total_sensors - 1;
+            gpu_sensors[pos].family   = FAM_THERM;
+            gpu_sensors[pos].idx      = -1;
+            gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "thermhotspot");
+            gpu_sensors[pos].label     = "hotspot_max";
+        }
     }
 
     /* Check for kasprintf failures */
@@ -485,10 +512,13 @@ static int __init gddr7_temp_init(void)
         }
     }
 
-    pr_info("gddr7_temp: found %s at %s, registered %d hwmon devices "
-             "(%d GDDR7 modules + 1 hotspot, %d THERM channels + 1 hotspot)\n",
-             active_table->name, pci_name(gpu_dev), num_total_sensors,
-             active_table->dqr_num_modules, active_table->therm_num_channels);
+    pr_info("gddr7_temp: found %s at %s, registered %d hwmon devices",
+            active_table->name, pci_name(gpu_dev), num_total_sensors);
+    if (has_dqr)
+        pr_cont(" (%d GDDR7 modules + 1 hotspot)", active_table->dqr_num_modules);
+    if (has_therm)
+        pr_cont(" (%d THERM channels + 1 hotspot)", active_table->therm_num_channels);
+    pr_cont("\n");
 
     return 0;
 

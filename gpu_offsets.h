@@ -17,16 +17,18 @@ struct gpu_offset_table {
     u16 device_id;
     const char *name;
 
-    /* GDDR7 DQR temperature region */
+    /* GDDR7 DQR temperature region.
+     * dqr_num_modules == 0 means this GPU has no DQR block at all. */
     u32 dqr_module0;       /* base offset of module 0 data register   */
     u32 dqr_vld_off;       /* offset from module base to validity reg */
     u32 dqr_stride;        /* byte stride between consecutive modules */
-    int dqr_num_modules;   /* number of DQR modules                   */
+    int dqr_num_modules;   /* number of DQR modules (0 = absent)      */
 
-    /* THERM internal hotspot region */
+    /* THERM internal hotspot region.
+     * therm_num_channels == 0 means this GPU has no THERM block at all. */
     u32 therm_ch0;           /* base offset of channel 0 register     */
     u32 therm_ch_stride;     /* byte stride between channels          */
-    int therm_num_channels;  /* number of THERM channels              */
+    int therm_num_channels;  /* number of THERM channels (0 = absent)   */
 };
 
 /* Data array — definition is in gpu_offsets_generated.h (auto-generated). */

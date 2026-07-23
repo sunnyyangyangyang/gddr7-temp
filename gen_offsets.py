@@ -19,7 +19,10 @@ def escape_c_string(s: str) -> str:
 
 
 def _generate_entries(tables):
-    """Generate C array initializer entries from YAML tables."""
+    """Generate C array initializer entries from YAML tables.
+
+    Each entry may have 'dqr', 'therm', or both blocks. Missing blocks
+    default to all-zero fields (num_modules/num_channels == 0 means absent)."""
     seen_ids = set()
     for t in tables:
         dev_id = int(t["device_id"], 16) if isinstance(t["device_id"], str) else t["device_id"]
@@ -27,15 +30,18 @@ def _generate_entries(tables):
             sys.exit(f"gen_offsets: duplicate device_id 0x{dev_id:04x}")
         seen_ids.add(dev_id)
 
+        dqr = t.get("dqr", {})
+        therm = t.get("therm", {})
+
         yield (
             f'    {{ .device_id = 0x{dev_id:04x}, .name = "{escape_c_string(t["name"])}",\n'
-            f'      .dqr_module0 = {to_c_hex(t["dqr"]["module0"])}, '
-            f'.dqr_vld_off = {to_c_hex(t["dqr"]["vld_off"])},\n'
-            f'      .dqr_stride = {to_c_hex(t["dqr"]["stride"])}, '
-            f'.dqr_num_modules = {t["dqr"]["num_modules"]},\n'
-            f'      .therm_ch0 = {to_c_hex(t["therm"]["ch0"])}, '
-            f'.therm_ch_stride = {to_c_hex(t["therm"]["stride"])},\n'
-            f'      .therm_num_channels = {t["therm"]["num_channels"]} }},'
+            f'      .dqr_module0 = {to_c_hex(dqr.get("module0", 0))}, '
+            f'.dqr_vld_off = {to_c_hex(dqr.get("vld_off", 0))},\n'
+            f'      .dqr_stride = {to_c_hex(dqr.get("stride", 0))}, '
+            f'.dqr_num_modules = {dqr.get("num_modules", 0)},\n'
+            f'      .therm_ch0 = {to_c_hex(therm.get("ch0", 0))}, '
+            f'.therm_ch_stride = {to_c_hex(therm.get("stride", 0))},\n'
+            f'      .therm_num_channels = {therm.get("num_channels", 0)} }},'
         )
 
 
