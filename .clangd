@@ -1,0 +1,7 @@
+# .clangd — config for linting this kernel module with clangd.
+# Place in project root alongside compile_commands.json.
+# Generate compile_commands.json:  make ide
+
+CompileFlags:
+  # Suppress clang-vs-gcc struct layout differences that trigger false static_assert failures
+  Add: [-Wno-static-assert]

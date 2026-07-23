@@ -1,23 +1,19 @@
-// gddr7_temp.c — minimal standalone kernel module (hwmon version, v7).
+// gddr7_temp.c — minimal standalone kernel module (hwmon version, v9).
 //
-// Reads the RTX 5090 (GB202):
-//   (A) GDDR7 DQR temperature sensors  — as before (8 modules + max hotspot)
-//   (B) THERM module internal hotspot channels — NEW in this version:
-//       6 raw internal temperature channels at fixed BAR0 offsets
-//       0xAD0A90 .. 0xAD0AA4 (32-bit registers, 4 bytes apart), plus a
-//       derived 7th sensor reporting the max of those 6.
+// Reads supported NVIDIA GPUs (offset tables in offsets.yaml):
+//   (A) VRAM temperature sensors — per-module with max hotspot:
+//       - GDDR7 DQR MR-code (Blackwell, e.g. RTX 5090)
+//       - GDDR6 ADC 12-bit fixed-point /32 (Ada/older, e.g. RTX 4090)
+//   (B) THERM module internal hotspot channels:
+//       per-model channel count at fixed BAR0 offsets, plus a derived sensor
+//       reporting the max of all valid channels.
+//       - Blackwell BJT: bit30 valid, (raw & 0xFFFF)/256 °C
+//       - Legacy byte: (raw>>8)&0xFF >= 0x7F is invalid sentinel
 //
 // All of it is exposed through the standard hwmon subsystem as
 // independent hwmon devices — one per physical/derived sensor — so
 // tools like `sensors` show each one under its own name instead of
 // folding everything into one chip with N temp channels.
-//
-// THERM decode (per the reverse-engineered/igor'sLAB-corroborated model):
-//   raw = ioread32(BAR0 + 0xAD0A90 + 4*channel)
-//   valid  = bit 30 of raw
-//   temp_C = (raw & 0xFFFF) / 256.0
-// This is NOT an NVIDIA-documented interface. Treat values as
-// experimental/best-effort, same caveat as upstream research notes.
 //
 // NOTE: reverse-engineered, unofficial. No PLM bypass — these are
 // plain MMIO reads of registers that aren't privilege-locked; nothing
@@ -46,83 +42,64 @@
 #include <linux/bitops.h>
 #include <linux/err.h>
 
+#include "gpu_offsets.h"
+#include "gpu_offsets_generated.h"
+
 #define NV_VENDOR_ID   0x10de
-#define RTX5090_DEV_ID 0x2b85
 
-/* ---------------- GDDR7 DQR region (unchanged from v6) --------------- */
+/* THERM protocol constants (not GPU-specific — same for all models) */
+#define THERM_VALID_BIT     BIT(30)
+#define THERM_RAW_MASK      0xFFFFu       /* fixed point, 1/256 °C per LSB */
+#define THERM_LEGACY_LIMIT  0x7Fu        /* >= 127 °C is invalid sentinel   */
 
-#define DQR_MODULE0     0x009024C0u
-#define DQR_VLD_OFF     0x10u          /* DQR_MODULE0 + 0x10 = validity reg */
-#define DQR_STRIDE      0x00004000u
-#define DQR_NUM_MODULES 8              /* fixed: this board always has 8 */
+/* GDDR6 ADC constants */
+#define VRAM_GDDR6_ADC_MASK  0xFFFu      /* 12-bit ADC value                 */
+#define VRAM_GDDR6_DIVISOR   32u         /* raw / 32 = degrees Celsius       */
 
-/* Total span of BAR0 address space this module reads from for DQR,
- * starting at DQR_MODULE0. Used both to size the ioremap and to
- * sanity-check BAR0 is actually big enough before we map it. */
-#define DQR_SPAN ((DQR_NUM_MODULES - 1) * DQR_STRIDE + DQR_VLD_OFF + sizeof(u32))
-
-/* ---------------- THERM internal hotspot region (NEW) ---------------- */
-//
-// Six consecutive 32-bit registers inside Blackwell's NV_THERM module
-// window (same window as the documented NV_THERM_I2CS_SCRATCH at
-// 0xAD00BC in the nouveau/NVIDIA-copyrighted GB202 headers).
-
-#define THERM_CH0        0x00AD0A90u
-#define THERM_CH_STRIDE   0x00000004u
-#define THERM_NUM_CHANNELS 6
-
-#define THERM_VALID_BIT   BIT(30)
-#define THERM_RAW_MASK    0xFFFFu      /* fixed point, 1/256 °C per LSB */
-
-#define THERM_SPAN ((THERM_NUM_CHANNELS - 1) * THERM_CH_STRIDE + sizeof(u32))
+/* Reasonable upper bounds for stack arrays in read callbacks.
+ * Enforced at init() via sanity checks on active_table fields. */
+#define GPU_MAX_VRAM_MODULES  18
+#define GPU_MAX_THERM_CHS     16
 
 static struct pci_dev *gpu_dev;
-static void __iomem *dqr_base;    /* ioremap'd once, covers DQR_SPAN bytes   */
-static void __iomem *therm_base;  /* ioremap'd once, covers THERM_SPAN bytes */
+static const struct gpu_offset_table *active_table;  /* set during init() */
+static void __iomem *vram_base;   /* ioremap'd once, covers computed vram span   */
+static void __iomem *therm_base;  /* ioremap'd once, covers computed therm span  */
+
+/* Dynamic sensor arrays (sized at init based on active_table) */
+static struct gpu_sensor_ctx *gpu_sensors;
+static int num_total_sensors;
+
+/* ---------------- lookup / helpers ---------------- */
+
+static const struct gpu_offset_table *find_table(u16 device_id)
+{
+    int i;
+    for (i = 0; i < gpu_tables_count; i++)
+        if (gpu_tables[i].device_id == device_id)
+            return &gpu_tables[i];
+    return NULL;
+}
 
 /* ---------------- sensor identity / dispatch ---------------- */
 
 enum sensor_family {
-    FAM_GDDR7,  /* idx == -1: max-of-8 hotspot; idx >= 0: single module   */
-    FAM_THERM,  /* idx == -1: max-of-6 hotspot; idx >= 0: single channel  */
+    FAM_VRAM,     /* idx == -1: max hotspot; idx >= 0: single module   */
+    FAM_HOTSPOT,  /* idx == -1: max hotspot; idx >= 0: single channel  */
 };
 
 struct gpu_sensor_ctx {
     enum sensor_family family;
     int idx;
     const char *chip_name;  /* becomes the hwmon `name` file -> must be a
-                              * short identifier, no whitespace, so each
-                              * shows up as its own distinct sensor */
+                               * short identifier, no whitespace, so each
+                               * shows up as its own distinct sensor */
     const char *label;
 };
 
-static struct gpu_sensor_ctx gpu_sensors[] = {
-    /* --- GDDR7 DQR (8 modules + hotspot) --- */
-    { FAM_GDDR7, -1, "gddr7hotspot", "hotspot" },
-    { FAM_GDDR7,  0, "gddr7mod0",    "module0" },
-    { FAM_GDDR7,  1, "gddr7mod1",    "module1" },
-    { FAM_GDDR7,  2, "gddr7mod2",    "module2" },
-    { FAM_GDDR7,  3, "gddr7mod3",    "module3" },
-    { FAM_GDDR7,  4, "gddr7mod4",    "module4" },
-    { FAM_GDDR7,  5, "gddr7mod5",    "module5" },
-    { FAM_GDDR7,  6, "gddr7mod6",    "module6" },
-    { FAM_GDDR7,  7, "gddr7mod7",    "module7" },
-
-    /* --- THERM internal channels (6 raw + 1 derived max) --- */
-    { FAM_THERM,  0, "thermch0",      "therm_ch0" },
-    { FAM_THERM,  1, "thermch1",      "therm_ch1" },
-    { FAM_THERM,  2, "thermch2",      "therm_ch2" },
-    { FAM_THERM,  3, "thermch3",      "therm_ch3" },
-    { FAM_THERM,  4, "thermch4",      "therm_ch4" },
-    { FAM_THERM,  5, "thermch5",      "therm_ch5" },
-    { FAM_THERM, -1, "thermhotspot",  "hotspot_max" },
-};
-
-#define NUM_TOTAL_SENSORS ARRAY_SIZE(gpu_sensors)
-
-/* One hwmon device handle per sensor above. Registered/unregistered
- * explicitly and symmetrically (see lifecycle note at top of file). */
-static struct device *hwmon_devs[ARRAY_SIZE(gpu_sensors)];
+/* gpu_sensors[] is dynamically allocated in init() based on active_table.
+ * hwmon_devs[] mirrors it one-to-one. Both are freed in exit(). */
+static struct device **hwmon_devs;
 
 /* Every sensor exposes exactly one temp channel (channel 0): its own
  * temp1_input / temp1_label. Shared across all registrations since the
@@ -142,47 +119,70 @@ static const struct hwmon_channel_info *gpu_info[] = {
     NULL
 };
 
-/* ---------------- GDDR7 DQR read path (unchanged logic) ---------------- */
+/* ---------------- VRAM read path (GDDR7 DQR + GDDR6 ADC) ---------------- */
 
-/* Convert raw GDDR temp MR-code (bits 23:16 of the DQR data word) to °C. */
-static int decode_mrcode(u32 raw)
+/* Convert raw GDDR7 temp MR-code (bits 23:16 of the DQR data word) to °C. */
+static int decode_gddr7_mrcode(u32 raw_dq)
 {
-    int code = (raw >> 16) & 0xFF;
+    int code = (raw_dq >> 16) & 0xFF;
     if (code > 80)
         code = 80;
     return (code > 19) ? (code - 20) * 2 : -(40 - code * 2);
 }
 
-static bool gddr7_read_module(int module_idx, int *out_c)
+/* Read one VRAM module. Returns true and fills *out_c (degrees C) on success.
+ * Dispatches to the correct decode algorithm based on active_table->vram_type. */
+static bool vram_read_module(int module_idx, int *out_c)
 {
-    u32 off = (u32)module_idx * DQR_STRIDE;
-    u32 vld = ioread32(dqr_base + off + DQR_VLD_OFF);
-    u32 dq  = ioread32(dqr_base + off);
+    u32 off = (u32)module_idx * active_table->vram_stride;
 
-    if (vld == 0xFFFFFFFFu || dq == 0xFFFFFFFFu)
-        return false;
+    switch (active_table->vram_type) {
+    case VRAM_GDDR7_DQR: {
+        /* GDDR7 DQR: read validity register first, then data. */
+        u32 vld = ioread32(vram_base + off + active_table->vram_vld_off);
+        u32 dq  = ioread32(vram_base + off);
 
-    if (((vld >> 24) & 0xF) != 0xF)          /* not all 4 IC/subp valid */
-        return false;
-    if ((dq & 0xFFFF0000u) == 0xBADF0000u)   /* poison sentinel */
-        return false;
+        if (vld == 0xFFFFFFFFu || dq == 0xFFFFFFFFu)
+            return false;
+        if (((vld >> 24) & 0xF) != 0xF)          /* not all 4 IC/subp valid */
+            return false;
+        if ((dq & 0xFFFF0000u) == 0xBADF0000u)   /* poison sentinel */
+            return false;
 
-    *out_c = decode_mrcode(dq);
-    return true;
+        *out_c = decode_gddr7_mrcode(dq);
+        return true;
+    }
+
+    case VRAM_GDDR6_ADC: {
+        /* GDDR6 ADC: read validity, then 12-bit ADC value /32. */
+        u32 vld = ioread32(vram_base + off + active_table->vram_vld_off);
+        u32 raw = ioread32(vram_base + off);
+
+        if (vld == 0xFFFFFFFFu || raw == 0xFFFFFFFFu)
+            return false;
+        if (((vld >> 24) & 0xF) != 0xF)          /* not all 4 IC/subp valid */
+            return false;
+
+        *out_c = (raw & VRAM_GDDR6_ADC_MASK) / VRAM_GDDR6_DIVISOR;
+        return true;
+    }
+
+    default:
+        return false;
+    }
 }
 
-/* Read all 8 GDDR7 modules into temps[0..7] and report the hottest. */
-static bool gddr7_read_modules(int temps[DQR_NUM_MODULES],
-                                unsigned int *valid_mask, int *hottest)
+/* Read all VRAM modules into temps[] and report the hottest. */
+static bool vram_read_modules(int *temps, unsigned int *valid_mask, int *hottest)
 {
     int hot = -128;
     unsigned int mask = 0;
     int p;
 
-    for (p = 0; p < DQR_NUM_MODULES; p++) {
+    for (p = 0; p < active_table->vram_num_modules; p++) {
         int c;
 
-        if (!gddr7_read_module(p, &c))
+        if (!vram_read_module(p, &c))
             continue;
 
         temps[p] = c;
@@ -197,36 +197,47 @@ static bool gddr7_read_modules(int temps[DQR_NUM_MODULES],
     return mask != 0;
 }
 
-/* ---------------- THERM internal hotspot read path (NEW) ---------------- */
+/* ---------------- THERM internal hotspot read path ---------------- */
 
 /* Read one THERM channel. Returns true and fills *out_mC (millidegree C)
- * if bit 30 marks it valid and the readback isn't a bus-error pattern.
- * *out_mC is computed as (raw & 0xFFFF) * 1000 / 256 to keep everything
- * in integer millidegree units for hwmon, equivalent to (raw & 0xFFFF)/256
- * degrees Celsius. */
+ * on success. Dispatches based on active_table->therm_type. */
 static bool therm_read_channel(int ch, int *out_mC)
 {
-    u32 raw = ioread32(therm_base + (u32)ch * THERM_CH_STRIDE);
+    u32 raw = ioread32(therm_base + (u32)ch * active_table->therm_ch_stride);
 
     if (raw == 0xFFFFFFFFu)
         return false;
-    if (!(raw & THERM_VALID_BIT))
-        return false;
 
-    *out_mC = (int)(((raw & THERM_RAW_MASK) * 1000u) / 256u);
-    return true;
+    switch (active_table->therm_type) {
+    case THERM_BLACKWELL_BJT:
+        /* Bit 30 marks validity. Temperature is lower 16 bits, fixed-point 1/256 °C. */
+        if (!(raw & THERM_VALID_BIT))
+            return false;
+        *out_mC = (int)(((raw & THERM_RAW_MASK) * 1000u) / 256u);
+        return true;
+
+    case THERM_LEGACY_BYTE: {
+        /* Bits 15:8 hold temperature in °C. >= 0x7F is invalid sentinel. */
+        u8 temp_c = (raw >> 8) & 0xFF;
+        if (temp_c >= THERM_LEGACY_LIMIT)
+            return false;
+        *out_mC = temp_c * 1000;
+        return true;
+    }
+
+    default:
+        return false;
+    }
 }
 
-/* Read all 6 THERM channels into temps_mC[0..5] (millidegree C) and
- * report the hottest valid one. */
-static bool therm_read_channels(int temps_mC[THERM_NUM_CHANNELS],
-                                 unsigned int *valid_mask, int *hottest_mC)
+/* Read all THERM channels into temps_mC[] (millidegree C) and report the hottest. */
+static bool therm_read_channels(int *temps_mC, unsigned int *valid_mask, int *hottest_mC)
 {
     int hot = INT_MIN;
     unsigned int mask = 0;
     int ch;
 
-    for (ch = 0; ch < THERM_NUM_CHANNELS; ch++) {
+    for (ch = 0; ch < active_table->therm_num_channels; ch++) {
         int mC;
 
         if (!therm_read_channel(ch, &mC))
@@ -247,8 +258,8 @@ static bool therm_read_channels(int temps_mC[THERM_NUM_CHANNELS],
 /* ---------------- shared hwmon callbacks ---------------- */
 
 static umode_t gpu_hwmon_is_visible(const void *data,
-                                     enum hwmon_sensor_types type,
-                                     u32 attr, int channel)
+                                      enum hwmon_sensor_types type,
+                                      u32 attr, int channel)
 {
     if (type != hwmon_temp || channel != 0)
         return 0;
@@ -263,7 +274,7 @@ static umode_t gpu_hwmon_is_visible(const void *data,
 }
 
 static int gpu_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
-                           u32 attr, int channel, long *val)
+                            u32 attr, int channel, long *val)
 {
     struct gpu_sensor_ctx *ctx = dev_get_drvdata(dev);
     int pm_ret;
@@ -276,12 +287,12 @@ static int gpu_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
     if (pm_ret < 0)
         return pm_ret;
 
-    if (ctx->family == FAM_GDDR7) {
-        int temps[DQR_NUM_MODULES];
+    if (ctx->family == FAM_VRAM) {
+        int temps[GPU_MAX_VRAM_MODULES];
         unsigned int valid_mask;
         int hottest;
 
-        if (!gddr7_read_modules(temps, &valid_mask, &hottest)) {
+        if (!vram_read_modules(temps, &valid_mask, &hottest)) {
             ret = -ENODATA;
             goto out;
         }
@@ -293,8 +304,8 @@ static int gpu_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
         } else {
             ret = -ENODATA;
         }
-    } else { /* FAM_THERM */
-        int temps_mC[THERM_NUM_CHANNELS];
+    } else { /* FAM_HOTSPOT */
+        int temps_mC[GPU_MAX_THERM_CHS];
         unsigned int valid_mask;
         int hottest_mC;
 
@@ -357,26 +368,73 @@ static void gpu_unregister_all(int upto)
 
 static int __init gddr7_temp_init(void)
 {
+    struct pci_dev *cand = NULL;
     resource_size_t bar0_len;
-    resource_size_t needed;
+    resource_size_t vram_span, therm_span;
+    int n_vram_sensors, n_therm_sensors;
     int ret;
     int i;
 
-    gpu_dev = pci_get_device(NV_VENDOR_ID, RTX5090_DEV_ID, NULL);
+    /* Iterate all NVIDIA devices until we find one in our offset table. */
+    gpu_dev = NULL;
+    while ((cand = pci_get_device(NV_VENDOR_ID, PCI_ANY_ID, cand))) {
+        active_table = find_table(cand->device);
+        if (active_table) {
+            gpu_dev = cand;  /* hold this reference; loop won't put it */
+            break;
+        }
+    }
+
     if (!gpu_dev) {
-        pr_warn("gddr7_temp: no RTX 5090 (dev id 0x%04x) found\n", RTX5090_DEV_ID);
+        pr_warn("gddr7_temp: no supported NVIDIA GPU found\n");
         return -ENODEV;
+    }
+
+    /* Sanity-check table fields. num == 0 means that block is absent;
+     * at least one must be present. */
+    if (active_table->vram_num_modules < 0 || active_table->vram_num_modules > GPU_MAX_VRAM_MODULES) {
+        pr_err("gddr7_temp: invalid vram_num_modules %d for %s\n",
+               active_table->vram_num_modules, active_table->name);
+        ret = -EINVAL;
+        goto err_put;
+    }
+    if (active_table->therm_num_channels < 0 || active_table->therm_num_channels > GPU_MAX_THERM_CHS) {
+        pr_err("gddr7_temp: invalid therm_num_channels %d for %s\n",
+               active_table->therm_num_channels, active_table->name);
+        ret = -EINVAL;
+        goto err_put;
+    }
+    if (active_table->vram_num_modules == 0 && active_table->therm_num_channels == 0) {
+        pr_err("gddr7_temp: %s defines no sensors at all\n", active_table->name);
+        ret = -EINVAL;
+        goto err_put;
+    }
+
+    bool has_vram   = active_table->vram_num_modules   > 0;
+    bool has_therm  = active_table->therm_num_channels > 0;
+
+    /* Compute runtime spans from table. Skip absent blocks to avoid
+     * underflow on (num - 1) when num == 0. */
+    resource_size_t needed = 0;
+
+    if (has_vram) {
+        vram_span = (resource_size_t)(active_table->vram_num_modules - 1) * active_table->vram_stride
+                    + active_table->vram_vld_off + sizeof(u32);
+        needed = active_table->vram_module0 + vram_span;
+    }
+
+    if (has_therm) {
+        therm_span = (resource_size_t)(active_table->therm_num_channels - 1) * active_table->therm_ch_stride
+                     + sizeof(u32);
+        if (active_table->therm_ch0 + therm_span > needed)
+            needed = active_table->therm_ch0 + therm_span;
     }
 
     bar0_len = pci_resource_len(gpu_dev, 0);
 
-    needed = DQR_MODULE0 + DQR_SPAN;
-    if (THERM_CH0 + THERM_SPAN > needed)
-        needed = THERM_CH0 + THERM_SPAN;
-
     if (bar0_len < needed) {
         pr_err("gddr7_temp: BAR0 too small (0x%llx bytes), refusing to map\n",
-               (unsigned long long)bar0_len);
+                (unsigned long long)bar0_len);
         ret = -EINVAL;
         goto err_put;
     }
@@ -390,25 +448,96 @@ static int __init gddr7_temp_init(void)
         goto err_put;
     }
 
-    dqr_base = ioremap(pci_resource_start(gpu_dev, 0) + DQR_MODULE0, DQR_SPAN);
-    if (!dqr_base) {
-        pr_err("gddr7_temp: ioremap of DQR region failed\n");
-        ret = -ENOMEM;
-        goto err_disable;
+    if (has_vram) {
+        vram_base = ioremap(pci_resource_start(gpu_dev, 0) + active_table->vram_module0, vram_span);
+        if (!vram_base) {
+            pr_err("gddr7_temp: ioremap of VRAM region failed\n");
+            ret = -ENOMEM;
+            goto err_disable;
+        }
     }
 
-    therm_base = ioremap(pci_resource_start(gpu_dev, 0) + THERM_CH0, THERM_SPAN);
-    if (!therm_base) {
-        pr_err("gddr7_temp: ioremap of THERM region failed\n");
+    if (has_therm) {
+        therm_base = ioremap(pci_resource_start(gpu_dev, 0) + active_table->therm_ch0, therm_span);
+        if (!therm_base) {
+            pr_err("gddr7_temp: ioremap of THERM region failed\n");
+            ret = -ENOMEM;
+            goto err_unmap_vram;
+        }
+    }
+
+    /* Build dynamic sensor array. Layout:
+     * [VRAM hotspot?][VRAM modules...][THERM channels...][THERM hotspot?]
+     * Absent blocks contribute zero sensors (no hotspot either). */
+    n_vram_sensors   = has_vram   ? active_table->vram_num_modules + 1 : 0;
+    n_therm_sensors  = has_therm  ? active_table->therm_num_channels + 1 : 0;
+    num_total_sensors = n_vram_sensors + n_therm_sensors;
+
+    gpu_sensors = kcalloc(num_total_sensors, sizeof(*gpu_sensors), GFP_KERNEL);
+    if (!gpu_sensors) {
         ret = -ENOMEM;
-        goto err_unmap_dqr;
+        goto err_unmap_therm;
+    }
+
+    hwmon_devs = kcalloc(num_total_sensors, sizeof(*hwmon_devs), GFP_KERNEL);
+    if (!hwmon_devs) {
+        ret = -ENOMEM;
+        goto err_free_sensors;
+    }
+
+    /* VRAM hotspot (first index) */
+    if (has_vram) {
+        int pos = 0;
+        gpu_sensors[pos].family   = FAM_VRAM;
+        gpu_sensors[pos].idx      = -1;
+        gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "vramhotspot");
+        gpu_sensors[pos].label     = "hotspot";
+
+        /* VRAM modules */
+        for (i = 0; i < active_table->vram_num_modules; i++) {
+            pos = i + 1;
+            gpu_sensors[pos].family   = FAM_VRAM;
+            gpu_sensors[pos].idx      = i;
+            gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "vrammod%d", i);
+            gpu_sensors[pos].label     = gpu_sensors[pos].chip_name;  /* same string */
+        }
+    }
+
+    /* THERM channels + hotspot — appended after VRAM block */
+    if (has_therm) {
+        int base = n_vram_sensors;
+
+        for (i = 0; i < active_table->therm_num_channels; i++) {
+            int pos = base + i;
+            gpu_sensors[pos].family   = FAM_HOTSPOT;
+            gpu_sensors[pos].idx      = i;
+            gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "thermch%d", i);
+            gpu_sensors[pos].label     = gpu_sensors[pos].chip_name;  /* same string */
+        }
+
+        /* THERM hotspot (last index) */
+        {
+            int pos = num_total_sensors - 1;
+            gpu_sensors[pos].family   = FAM_HOTSPOT;
+            gpu_sensors[pos].idx      = -1;
+            gpu_sensors[pos].chip_name = kasprintf(GFP_KERNEL, "thermhotspot");
+            gpu_sensors[pos].label     = "hotspot_max";
+        }
+    }
+
+    /* Check for kasprintf failures */
+    for (i = 0; i < num_total_sensors; i++) {
+        if (!gpu_sensors[i].chip_name) {
+            ret = -ENOMEM;
+            goto err_free_names;
+        }
     }
 
     /* Register each sensor as its own hwmon chip instance so
      * monitoring tools show independently-named sensors instead of
      * folding them into one chip with N temp channels. Deliberately
      * NOT devm_* — see lifecycle note at top of file. */
-    for (i = 0; i < NUM_TOTAL_SENSORS; i++) {
+    for (i = 0; i < num_total_sensors; i++) {
         hwmon_devs[i] = hwmon_device_register_with_info(&gpu_dev->dev,
                                 gpu_sensors[i].chip_name,
                                 &gpu_sensors[i],
@@ -422,42 +551,70 @@ static int __init gddr7_temp_init(void)
         }
     }
 
-    pr_info("gddr7_temp: found RTX 5090 at %s, registered %zu hwmon devices "
-             "(8 GDDR7 modules + 1 hotspot, 6 THERM channels + 1 hotspot)\n",
-             pci_name(gpu_dev), NUM_TOTAL_SENSORS);
+    pr_info("gddr7_temp: found %s at %s, registered %d hwmon devices",
+            active_table->name, pci_name(gpu_dev), num_total_sensors);
+    if (has_vram)
+        pr_cont(" (%d VRAM modules + 1 hotspot)", active_table->vram_num_modules);
+    if (has_therm)
+        pr_cont(" (%d THERM channels + 1 hotspot)", active_table->therm_num_channels);
+    pr_cont("\n");
 
     return 0;
 
 err_unregister:
     gpu_unregister_all(i);
+err_free_names:
+    for (i = 0; i < num_total_sensors; i++)
+        kfree(gpu_sensors[i].chip_name);
+    /* labels that share chip_name pointers are freed above too */
+err_free_sensors:
+    kfree(hwmon_devs);
+    hwmon_devs = NULL;
+    kfree(gpu_sensors);
+    gpu_sensors = NULL;
+err_unmap_therm:
     iounmap(therm_base);
     therm_base = NULL;
-err_unmap_dqr:
-    iounmap(dqr_base);
-    dqr_base = NULL;
+err_unmap_vram:
+    iounmap(vram_base);
+    vram_base = NULL;
 err_disable:
     pci_disable_device(gpu_dev);
 err_put:
     pci_dev_put(gpu_dev);
     gpu_dev = NULL;
+    active_table = NULL;
     return ret;
 }
 
 static void __exit gddr7_temp_exit(void)
 {
+    int i;
+
     /* Explicit, symmetric teardown for every registered instance —
      * must happen before iounmap/pci teardown so no read callback can
      * race with the resources being freed underneath it. */
-    gpu_unregister_all(NUM_TOTAL_SENSORS);
+    gpu_unregister_all(num_total_sensors);
+
+    /* Free dynamically allocated sensor names. */
+    if (gpu_sensors) {
+        for (i = 0; i < num_total_sensors; i++)
+            kfree(gpu_sensors[i].chip_name);
+        kfree(gpu_sensors);
+        gpu_sensors = NULL;
+    }
+
+    kfree(hwmon_devs);
+    hwmon_devs = NULL;
 
     if (therm_base) {
         iounmap(therm_base);
         therm_base = NULL;
     }
 
-    if (dqr_base) {
-        iounmap(dqr_base);
-        dqr_base = NULL;
+    if (vram_base) {
+        iounmap(vram_base);
+        vram_base = NULL;
     }
 
     if (gpu_dev) {
@@ -465,6 +622,8 @@ static void __exit gddr7_temp_exit(void)
         pci_dev_put(gpu_dev);
         gpu_dev = NULL;
     }
+
+    active_table = NULL;
 }
 
 module_init(gddr7_temp_init);
@@ -472,4 +631,4 @@ module_exit(gddr7_temp_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sunny Yang <yxh9956@gmail.com>");
-MODULE_DESCRIPTION("Read RTX 5090 GDDR7 DQR + THERM internal hotspot sensors via hwmon");
+MODULE_DESCRIPTION("Read NVIDIA GPU VRAM + THERM internal hotspot sensors via hwmon");

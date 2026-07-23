@@ -3,12 +3,12 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 3.0
+%global gddr7_temp_version 3.2
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
-Release:        2%{?dist}
-Summary:        Kernel module to read RTX 5090 GDDR7 DQR temperature sensors
+Release:        1%{?dist}
+Summary:        Kernel module to read NVIDIA GPU GDDR7 DQR and THERM temperature sensors
 
 License:        GPL-2.0-only
 URL:            https://github.com/sunnyyangyangyang/gddr7-temp
@@ -17,11 +17,15 @@ Source1:        Makefile
 Source2:        gddr7_temp-kmod.spec.in
 Source3:        LICENSE
 Source4:        gddr7_temp-load.service
+Source5:        gpu_offsets.h
+Source6:        offsets.yaml
+Source7:        gen_offsets.py
+Source8:        gen_compile_commands.py
 
 # Akmod BuildRequires
 BuildRequires:  kmodtool
 BuildRequires:  akmods
-BuildRequires:  gcc make rpm-build
+BuildRequires:  gcc make rpm-build python3 python3-pyyaml
 BuildRequires:  kernel-devel
 BuildRequires:  systemd-rpm-macros
 
@@ -35,9 +39,11 @@ Requires:       %{name}-kmod-common = %{?epoch:%{epoch}:}%{version}-%{release}
 %{expand:%(kmodtool --target %{_target_cpu} --kmodname %{name} --akmod 2>/dev/null) }
 
 %description
-gddr7_temp is a kernel module that reads the RTX 5090 (GB202) GDDR7 DQR
-and THERM internal hotspot temperature sensors directly via ioremap and
-exposes them through the Linux hwmon subsystem.
+gddr7_temp is a kernel module that reads NVIDIA GPU GDDR7 DQR and THERM
+internal hotspot temperature sensors directly via ioremap and exposes
+them through the Linux hwmon subsystem.
+
+Supported GPUs are defined in offsets.yaml (currently RTX 5090 GB202).
 
 This module is reverse-engineered and unofficial. It performs read-only
 access to GPU MMIO registers that are not privilege-locked, without
@@ -62,6 +68,10 @@ cp %{SOURCE0} .
 cp %{SOURCE1} .
 cp %{SOURCE3} .
 cp %{SOURCE4} .
+cp %{SOURCE5} .
+cp %{SOURCE6} .
+cp %{SOURCE7} .
+cp %{SOURCE8} .
 
 %install
 # --- Create and install the kmod SRPM for akmods ---
@@ -126,6 +136,12 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Thu Jul 24 2026 Sunny Yang <yxh9956@gmail.com> - 3.0-3
+- Refactor: replace hardcoded offsets with YAML-driven lookup table
+- Add multi-GPU support via offsets.yaml configuration
+- Build artifacts now isolated in build/ directory
+- Add LSP clangd support and GitHub Actions Copr auto-rebuild
+
 * Tue Jul 21 2026 Sunny Yang <yxh9956@gmail.com> - 3.0-2
 - Fix spec description: /proc/gddr7_temp -> hwmon subsystem
 - Update MODULE_AUTHOR to "Sunny Yang"

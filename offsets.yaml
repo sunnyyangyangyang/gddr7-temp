@@ -1,0 +1,396 @@
+# GPU offset tables for gddr7_temp driver.
+# Each entry is one GPU model. device_id is the PCI Device ID (vendor is fixed 0x10de).
+# All offset/stride fields accept hex strings or integers; gen_offsets.py normalises to int().
+#
+# VRAM sensor types:
+#   VRAM_GDDR7_DQR — GDDR7 DQR MR-code (Blackwell)
+#   VRAM_GDDR6_ADC — GDDR6 ADC 12-bit fixed-point, div by 32
+#   VRAM_NONE      — No VRAM sensor
+# THERM sensor types:
+#   THERM_BLACKWELL_BJT — bit30 valid, (raw & 0xFFFF)/256 °C
+#   THERM_LEGACY_BYTE   — (raw>>8)&0xFF >= 0x7F is invalid sentinel
+#   THERM_NONE          — No Therm sensor
+
+# ==============================================================================
+# RTX 50 Series (Blackwell)
+# ==============================================================================
+- device_id: 0x2b85
+  name: "RTX 5090"
+  vram:
+    type: VRAM_GDDR7_DQR
+    module0: 0x009024C0
+    vld_off: 0x10
+    stride: 0x00004000
+    num_modules: 16
+  therm:
+    type: THERM_BLACKWELL_BJT
+    ch0: 0x00AD0A90
+    stride: 0x00000004
+    num_channels: 6
+
+- device_id: 0x2c05
+  name: "RTX 5070 Ti"
+  therm:
+    type: THERM_BLACKWELL_BJT
+    ch0: 0x00AD0A90
+    stride: 0x00000004
+    num_channels: 6
+
+# ==============================================================================
+# RTX 40 Series (Ada Lovelace)
+# ==============================================================================
+- device_id: 0x2684
+  name: "RTX 4090"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2685
+  name: "RTX 4090 D"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2702
+  name: "RTX 4080 Super"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2704
+  name: "RTX 4080"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2705
+  name: "RTX 4070 Ti Super"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2782
+  name: "RTX 4070 Ti"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2783
+  name: "RTX 4070 Super"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2786
+  name: "RTX 4070"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2860
+  name: "RTX 4070 Mobile"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x28e0
+  name: "RTX 4060 Mobile"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+# ==============================================================================
+# RTX 30 Series (Ampere)
+# ==============================================================================
+- device_id: 0x2203
+  name: "RTX 3090 Ti"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2204
+  name: "RTX 3090"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2208
+  name: "RTX 3080 Ti"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2206
+  name: "RTX 3080"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2216
+  name: "RTX 3080 LHR"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2484
+  name: "RTX 3070"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000EE50
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2488
+  name: "RTX 3070 LHR"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000EE50
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+# ==============================================================================
+# Workstation & Data Center GPUs (RTX A-Series, L-Series, A-Series)
+# ==============================================================================
+- device_id: 0x2531
+  name: "RTX A2000 (GA106)"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2571
+  name: "RTX A2000"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2232
+  name: "RTX A4500"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2231
+  name: "RTX A5000"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x26b1
+  name: "RTX A6000"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x27b8
+  name: "NVIDIA L4"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x26b9
+  name: "NVIDIA L40S"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x2236
+  name: "NVIDIA A10"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1

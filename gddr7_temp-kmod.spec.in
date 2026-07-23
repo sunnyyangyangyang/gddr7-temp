@@ -8,19 +8,22 @@
 Name:           gddr7_temp-kmod
 Version:        @GDDR7_TEMP_VERSION@
 Release:        @RELEASE@
-Summary:        gddr7_temp kernel module for RTX 5090 GDDR7 temperature reading
+Summary:        gddr7_temp kernel module for NVIDIA GPU GDDR7 and THERM temperature sensors
 
 License:        GPL-2.0-only
 URL:            https://github.com/sunnyyangyangyang/gddr7-temp
 
 Source0:        gddr7_temp-kmod-%{version}.tar.gz
 
+# Additional sources from parent spec (copied into tarball)
+# gpu_offsets.h, offsets.yaml, gen_*.py are included in Source0 tarball
+
 ExclusiveArch:  x86_64
 
 # get the needed BuildRequires (in parts depending on what we build for)
 %global AkmodsBuildRequires %{_bindir}/kmodtool
 BuildRequires:  %{AkmodsBuildRequires}
-BuildRequires:  gcc, make
+BuildRequires:  gcc, make, python3, python3-pyyaml
 
 %{!?kernels:BuildRequires: buildsys-build-rpmfusion-kerneldevpkgs-%{?buildforkernels:%{buildforkernels}}%{!?buildforkernels:current}-%{_target_cpu} }
 
@@ -29,8 +32,9 @@ BuildRequires:  gcc, make
 
 %description
 The gddr7_temp %{version} kernel module for kernel %{kversion}.
-Reads the RTX 5090 (GB202) GDDR7 DQR temperature sensors directly via
-ioremap and exposes them through /proc/gddr7_temp.
+Reads NVIDIA GPU GDDR7 DQR and THERM internal hotspot temperature sensors
+directly via ioremap and exposes them through the Linux hwmon subsystem.
+GPU offset tables are defined in offsets.yaml (YAML-driven codegen).
 
 %prep
 # error out if there was something wrong with kmodtool
