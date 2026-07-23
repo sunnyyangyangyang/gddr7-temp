@@ -29,8 +29,8 @@ struct gpu_offset_table {
     int therm_num_channels;  /* number of THERM channels              */
 };
 
-static const struct gpu_offset_table gpu_tables[] = {
-    /* populated by gen_offsets.py from offsets.yaml at build time */
-};
+/* Data array — definition is in gpu_offsets_generated.h (auto-generated). */
+extern const struct gpu_offset_table gpu_tables[];
+extern const int gpu_tables_count;
 
 #endif /* GPU_OFFSETS_H */
