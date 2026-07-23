@@ -46,6 +46,7 @@
 #include <linux/err.h>
 
 #include "gpu_offsets.h"
+#include "gpu_offsets_generated.h"
 
 #define NV_VENDOR_ID   0x10de
 
