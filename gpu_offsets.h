@@ -1,7 +1,8 @@
-/* gpu_offsets.h — GPU offset table structure definition.
+/* gpu_offsets.h — GPU offset table structure + data.
  *
- * This header defines the struct used by both hand-written code and
- * the auto-generated gpu_offsets_generated.h array.
+ * The struct definition is hand-written; the gpu_tables[] array data
+ * between '{' and '};' is populated by gen_offsets.py from offsets.yaml.
+ * Edit offsets.yaml (not this file) to add or change GPU entries.
  *
  * NOTE: All fields are READ-ONLY MMIO offsets. No write offsets exist
  * in this driver — we only read temperature registers, never write to
@@ -26,6 +27,10 @@ struct gpu_offset_table {
     u32 therm_ch0;           /* base offset of channel 0 register     */
     u32 therm_ch_stride;     /* byte stride between channels          */
     int therm_num_channels;  /* number of THERM channels              */
+};
+
+static const struct gpu_offset_table gpu_tables[] = {
+    /* populated by gen_offsets.py from offsets.yaml at build time */
 };
 
 #endif /* GPU_OFFSETS_H */
