@@ -8,6 +8,7 @@ compile_commands.json
 *.mod.c
 .*.cmd
 ..*.cmd
+.module-common.o
 Module.symvers
 modules.order
 
