@@ -1,0 +1,95 @@
+name: Build Checks
+
+on:
+  push:
+    branches: [ main, refactor/** ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  rpmbuild:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:44
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install lc and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y 'dnf-command(copr)' mock createrepo_c rpm-build rpmdevtools spectool python3-pyyaml
+          dnf copr enable -y sunnyyang/local-copr
+          dnf install -y lc
+
+      - name: Init local repo and build RPM
+        shell: bash
+        run: |
+          set -euo pipefail
+          sg mock -c "lc init --repo ~/gddr7-repo"
+          sg mock -c "lc build --source . --torepo ~/gddr7-repo"
+
+      - name: Verify RPM artifact exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob globstar
+          matches=(~/gddr7-repo/**/gddr7_temp-*.rpm)
+          if [ ${#matches[@]} -eq 0 ]; then
+            echo "::error::No gddr7_temp-*.rpm found under ~/gddr7-repo"
+            find ~/gddr7-repo -maxdepth 5 -type f -name '*.rpm' || true
+            exit 1
+          fi
+          echo "Found RPM artifact(s):"
+          printf '%s\n' "${matches[@]}"
+
+      - name: Upload RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gddr7_temp-rpm
+          path: ~/gddr7-repo/**/gddr7_temp-*.rpm
+          if-no-files-found: error
+
+  ko-compile:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kernel headers and tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y kernel-devel make gcc python3-pyyaml
+
+      - name: Build kernel module
+        shell: bash
+        run: |
+          set -euo pipefail
+          KERNEL_VER=$(ls /usr/src/kernels)
+          echo "Detected kernel: $KERNEL_VER"
+          mkdir -p build
+          cp offsets.yaml gen_offsets.py gpu_offsets.h gddr7_temp.c Makefile build/
+          cd build
+          python3 gen_offsets.py offsets.yaml gpu_offsets_generated.h
+          make -C /usr/src/kernels/${KERNEL_VER} M=$(pwd) modules
+
+      - name: Verify kernel module artifact exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f build/gddr7_temp.ko ]; then
+            echo "::error::build/gddr7_temp.ko was not produced"
+            find build -maxdepth 2 -type f || true
+            exit 1
+          fi
+          echo "Found kernel module:"
+          ls -l build/gddr7_temp.ko
+
+      - name: Upload kernel module artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gddr7_temp-ko
+          path: build/gddr7_temp.ko
+          if-no-files-found: error
