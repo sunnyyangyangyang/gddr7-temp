@@ -3,11 +3,11 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 3.0
+%global gddr7_temp_version 3.1
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
-Release:        3%{?dist}
+Release:        1%{?dist}
 Summary:        Kernel module to read NVIDIA GPU GDDR7 DQR and THERM temperature sensors
 
 License:        GPL-2.0-only
