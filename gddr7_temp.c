@@ -73,7 +73,7 @@ static int num_total_sensors;
 static const struct gpu_offset_table *find_table(u16 device_id)
 {
     int i;
-    for (i = 0; i < ARRAY_SIZE(gpu_tables); i++)
+    for (i = 0; i < gpu_tables_count; i++)
         if (gpu_tables[i].device_id == device_id)
             return &gpu_tables[i];
     return NULL;
