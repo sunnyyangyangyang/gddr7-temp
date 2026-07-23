@@ -6,6 +6,9 @@ The skeleton (struct + extern declarations) lives in gpu_offsets.h."""
 import sys
 import yaml
 
+VRAM_TYPES = {"VRAM_GDDR7_DQR", "VRAM_GDDR6_ADC", "VRAM_NONE"}
+THERM_TYPES = {"THERM_BLACKWELL_BJT", "THERM_LEGACY_BYTE", "THERM_NONE"}
+
 
 def to_c_hex(v):
     if isinstance(v, str) and v.startswith("0x"):
@@ -18,10 +21,26 @@ def escape_c_string(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _resolve_vram_type(type_str, name):
+    """Resolve VRAM type from YAML. Defaults to VRAM_NONE if block is absent."""
+    t = type_str if isinstance(type_str, str) else "VRAM_NONE"
+    if t not in VRAM_TYPES:
+        sys.exit(f"gen_offsets: unknown vram_type '{t}' in {name}")
+    return t
+
+
+def _resolve_therm_type(type_str, name):
+    """Resolve THERM type from YAML. Defaults to THERM_NONE if block is absent."""
+    t = type_str if isinstance(type_str, str) else "THERM_NONE"
+    if t not in THERM_TYPES:
+        sys.exit(f"gen_offsets: unknown therm_type '{t}' in {name}")
+    return t
+
+
 def _generate_entries(tables):
     """Generate C array initializer entries from YAML tables.
 
-    Each entry may have 'dqr', 'therm', or both blocks. Missing blocks
+    Each entry may have 'vram', 'therm', or both blocks. Missing blocks
     default to all-zero fields (num_modules/num_channels == 0 means absent)."""
     seen_ids = set()
     for t in tables:
@@ -30,15 +49,20 @@ def _generate_entries(tables):
             sys.exit(f"gen_offsets: duplicate device_id 0x{dev_id:04x}")
         seen_ids.add(dev_id)
 
-        dqr = t.get("dqr", {})
+        vram = t.get("vram", {})
         therm = t.get("therm", {})
+
+        vram_type_str = _resolve_vram_type(vram.get("type"), t["name"])
+        therm_type_str = _resolve_therm_type(therm.get("type"), t["name"])
 
         yield (
             f'    {{ .device_id = 0x{dev_id:04x}, .name = "{escape_c_string(t["name"])}",\n'
-            f'      .dqr_module0 = {to_c_hex(dqr.get("module0", 0))}, '
-            f'.dqr_vld_off = {to_c_hex(dqr.get("vld_off", 0))},\n'
-            f'      .dqr_stride = {to_c_hex(dqr.get("stride", 0))}, '
-            f'.dqr_num_modules = {dqr.get("num_modules", 0)},\n'
+            f'      .vram_type = {vram_type_str},\n'
+            f'      .vram_module0 = {to_c_hex(vram.get("module0", 0))}, '
+            f'.vram_vld_off = {to_c_hex(vram.get("vld_off", 0))},\n'
+            f'      .vram_stride = {to_c_hex(vram.get("stride", 0))}, '
+            f'.vram_num_modules = {vram.get("num_modules", 0)},\n'
+            f'      .therm_type = {therm_type_str},\n'
             f'      .therm_ch0 = {to_c_hex(therm.get("ch0", 0))}, '
             f'.therm_ch_stride = {to_c_hex(therm.get("stride", 0))},\n'
             f'      .therm_num_channels = {therm.get("num_channels", 0)} }},'
