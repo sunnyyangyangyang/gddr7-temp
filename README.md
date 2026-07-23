@@ -1,6 +1,6 @@
-# gddr7_temp — RTX 5090 Temperature Monitoring Kernel Module
+# gddr7_temp — NVIDIA GPU VRAM + THERM Temperature Monitoring Kernel Module
 
-Reads GDDR7 DQR temperature sensors and internal THERM hotspot channels from an NVIDIA RTX 5090 (Blackwell / GB202), exposing all **16 sensors** through the standard Linux **hwmon** subsystem.
+Reads VRAM temperature sensors (GDDR7 DQR / GDDR6 ADC) and internal THERM hotspot channels from supported NVIDIA GPUs, exposing each sensor through the standard Linux **hwmon** subsystem.
 
 This is a kernel module approach to the same problem solved by [olealgoritme/gddr6](https://github.com/olealgoritme/gddr6). The DQR register offsets, validity checks, and MR-code decoding logic are all derived from that project. Thank you!
 
@@ -8,21 +8,31 @@ This is a kernel module approach to the same problem solved by [olealgoritme/gdd
 
 The module exposes two families of sensors, each as an independent hwmon device so monitoring tools show them separately instead of folding everything into one chip:
 
-### GDDR7 DQR (8 modules + 1 hotspot)
-Per-module memory temperature via the DQR register block at BAR0 offset `0x9024C0`. Each module has its own validity word and data word; MR-code decoding converts raw values to °C. The "hotspot" sensor reports the maximum across all 8 modules.
+### VRAM Temperature Sensors
+Per-module memory temperature via the VRAM register block at BAR0. Two decode algorithms depending on GPU generation:
+
+- **GDDR7 DQR MR-code** (Blackwell, e.g. RTX 5090): reads validity + data words per module; MR-code decoding converts raw values to °C.
+- **GDDR6 ADC fixed-point** (Ada / Ampere, e.g. RTX 40/30 series): reads lower 12-bit ADC value divided by 32 to get °C.
+
+The "hotspot" sensor reports the maximum across all valid modules.
 
 | hwmon device | sysfs path (example) | Meaning |
 |---|---|---|
-| `gddr7mod0` – `gddr7mod7` | `/sys/class/hwmon/hwmonN/` | Individual GDDR7 module temperature |
-| `gddr7hotspot` | `/sys/class/hwmon/hwmonN/` | Max of modules 0–7 |
+| `vrammod0` – `vrammodN` | `/sys/class/hwmon/hwmonN/` | Individual VRAM module temperature |
+| `vramhotspot` | `/sys/class/hwmon/hwmonN/` | Max of all VRAM modules |
 
-### THERM Internal Hotspot (6 channels + 1 hotspot)
-Six raw internal temperature channels from Blackwell's NV_THERM module window at BAR0 offset `0xAD0A90`. Each is a 32-bit register: valid bit at bit 30, fixed-point temperature in the lower 16 bits (1/256 °C per LSB). The "hotspot" sensor reports the maximum of the 6 channels.
+### THERM Internal Hotspot Channels
+Raw internal temperature channels from the GPU's NV_THERM module window at BAR0. Two decode algorithms depending on generation:
+
+- **Blackwell BJT** (RTX 50 series): 32-bit register, bit 30 valid flag, lower 16 bits fixed-point temperature (1/256 °C per LSB).
+- **Legacy byte** (Ada / Ampere, RTX 40/30 series): bits 15:8 hold temperature in °C; values ≥ 127°C are discarded as invalid sentinels.
+
+The "hotspot" sensor reports the maximum of all valid channels.
 
 | hwmon device | sysfs path (example) | Meaning |
 |---|---|---|
-| `thermch0` – `thermch5` | `/sys/class/hwmon/hwmonN/` | Individual THERM channel temperature |
-| `thermhotspot` | `/sys/class/hwmon/hwmonN/` | Max of therm channels 0–5 |
+| `thermch0` – `thermchN` | `/sys/class/hwmon/hwmonN/` | Individual THERM channel temperature |
+| `thermhotspot` | `/sys/class/hwmon/hwmonN/` | Max of all therm channels |
 
 > **Note:** The THERM register layout is reverse-engineered. It is NOT an NVIDIA-documented interface. Treat values as experimental/best-effort.
 
@@ -40,10 +50,52 @@ Read-only, no writes to GPU MMIO anywhere. The registers accessed simply aren't 
 
 ## Supported GPUs
 
-| GPU | Status |
-|---|---|
-| RTX 5090 (GB202) | Supported |
-| Other cards | Planned — register offsets need per-card reverse engineering |
+### RTX 50 Series (Blackwell)
+
+| GPU | Device ID | VRAM Sensor | THERM Sensor |
+|---|---|---|---|
+| RTX 5090 | 0x2b85 | GDDR7 DQR (16 modules) | Blackwell BJT (6 channels) |
+| RTX 5070 Ti | 0x2c05 | — | Blackwell BJT (6 channels) |
+
+### RTX 40 Series (Ada Lovelace)
+
+| GPU | Device ID | VRAM Sensor | THERM Sensor |
+|---|---|---|---|
+| RTX 4090 | 0x2684 | GDDR6 ADC | Legacy byte |
+| RTX 4090 D | 0x2685 | GDDR6 ADC | Legacy byte |
+| RTX 4080 Super | 0x2702 | GDDR6 ADC | Legacy byte |
+| RTX 4080 | 0x2704 | GDDR6 ADC | Legacy byte |
+| RTX 4070 Ti Super | 0x2705 | GDDR6 ADC | Legacy byte |
+| RTX 4070 Ti | 0x2782 | GDDR6 ADC | Legacy byte |
+| RTX 4070 Super | 0x2783 | GDDR6 ADC | Legacy byte |
+| RTX 4070 | 0x2786 | GDDR6 ADC | Legacy byte |
+| RTX 4070 Mobile | 0x2860 | GDDR6 ADC | Legacy byte |
+| RTX 4060 Mobile | 0x28e0 | GDDR6 ADC | Legacy byte |
+
+### RTX 30 Series (Ampere)
+
+| GPU | Device ID | VRAM Sensor | THERM Sensor |
+|---|---|---|---|
+| RTX 3090 Ti | 0x2203 | GDDR6 ADC | Legacy byte |
+| RTX 3090 | 0x2204 | GDDR6 ADC | Legacy byte |
+| RTX 3080 Ti | 0x2208 | GDDR6 ADC | Legacy byte |
+| RTX 3080 | 0x2206 | GDDR6 ADC | Legacy byte |
+| RTX 3080 LHR | 0x2216 | GDDR6 ADC | Legacy byte |
+| RTX 3070 | 0x2484 | GDDR6 ADC | Legacy byte |
+| RTX 3070 LHR | 0x2488 | GDDR6 ADC | Legacy byte |
+
+### Workstation & Data Center GPUs
+
+| GPU | Device ID | VRAM Sensor | THERM Sensor |
+|---|---|---|---|
+| RTX A2000 (GA106) | 0x2531 | GDDR6 ADC | Legacy byte |
+| RTX A2000 | 0x2571 | GDDR6 ADC | Legacy byte |
+| RTX A4500 | 0x2232 | GDDR6 ADC | Legacy byte |
+| RTX A5000 | 0x2231 | GDDR6 ADC | Legacy byte |
+| RTX A6000 | 0x26b1 | GDDR6 ADC | Legacy byte |
+| NVIDIA L4 | 0x27b8 | GDDR6 ADC | Legacy byte |
+| NVIDIA L40S | 0x26b9 | GDDR6 ADC | Legacy byte |
+| NVIDIA A10 | 0x2236 | GDDR6 ADC | Legacy byte |
 
 ## Building
 
@@ -58,18 +110,18 @@ The spec file uses the **akmod** build pattern, so the kernel module is compiled
 
 ## Usage
 
-After the module is loaded, all 16 sensors are available through hwmon. Use `sensors` to view them:
+After the module is loaded, all sensors are available through hwmon. Use `sensors` to view them:
 
 ```bash
-$ sensors | grep -E "gddr7|therm"
-gddr7hotspot-isa-0000
+$ sensors | grep -E "vram|therm"
+vramhotspot-isa-0000
          hotspot:  +58.0°C
 
-gddr7mod0-isa-0001
-         module0:  +56.0°C
+vrammod0-isa-0001
+         vrammod0: +56.0°C
 
-gddr7mod1-isa-0002
-         module1:  +54.0°C
+vrammod1-isa-0002
+         vrammod1: +54.0°C
 ...
 
 thermch0-isa-0008
@@ -105,7 +157,7 @@ sudo systemctl enable --now gddr7_temp-load.service
 - DQR and THERM register blocks are `ioremap`'d once at module load, `iounmap`'d at unload. No per-read remapping overhead.
 - Runtime PM (`pm_runtime_resume_and_get`) wraps each read to handle GPU sleep states gracefully.
 - A `0xFFFFFFFF` bus readback (completer abort / D3cold) is discarded as invalid.
-- For THERM channels, bit 30 must be set for a reading to be considered valid.
+- For THERM channels, Blackwell BJT requires bit 30 set; Legacy byte discards values ≥ 127°C.
 
 ## License
 
