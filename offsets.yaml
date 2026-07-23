@@ -21,7 +21,7 @@
     module0: 0x009024C0
     vld_off: 0x10
     stride: 0x00004000
-    num_modules: 16
+    num_modules: 8   # verified on real hardware; >8 may hit reserved MMIO causing instability
   therm:
     type: THERM_BLACKWELL_BJT
     ch0: 0x00AD0A90
