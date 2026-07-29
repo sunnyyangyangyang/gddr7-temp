@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0 # 获取完整提交历史，以保障 github.event.before 可查
 
-      - name: Check if gddr7_temp_version changed
+      - name: Check if Version or Release bumped
         id: check_version
         shell: bash
         run: |
@@ -33,20 +33,30 @@ jobs:
             BEFORE_SHA="HEAD~1"
           fi
 
-          # 提取 Push 前 main 分支的 %global gddr7_temp_version 版本号
-          OLD_VER=$(git show "$BEFORE_SHA":gddr7_temp-kmod.spec 2>/dev/null | grep -E '^\s*%global\s+gddr7_temp_version\s+' | awk '{print $3}' || true)
+          # 从 spec 内容中提取 "Version-Release" 组合字符串（例如 "3.2-1"）
+          extract_vr() {
+            local spec_content="$1"
+            local ver rel
+            ver=$(echo "$spec_content" | grep -E '^\s*%global\s+gddr7_temp_version\s+' | awk '{print $3}' || true)
+            # 提取 Release 并去除 %{?dist} 后缀
+            rel=$(echo "$spec_content" | grep -E '^\s*Release:\s+' | awk '{print $2}' | sed 's/%{.*}//g' || true)
+            echo "${ver}-${rel}"
+          }
 
-          # 提取当前提交的 %global gddr7_temp_version 版本号
-          NEW_VER=$(grep -E '^\s*%global\s+gddr7_temp_version\s+' gddr7_temp-kmod.spec | awk '{print $3}' || true)
+          OLD_SPEC=$(git show "$BEFORE_SHA":gddr7_temp-kmod.spec 2>/dev/null || true)
+          NEW_SPEC=$(cat gddr7_temp-kmod.spec 2>/dev/null || true)
 
-          echo "Version before push/merge: '$OLD_VER'"
-          echo "Version after push/merge:  '$NEW_VER'"
+          OLD_VR=$(extract_vr "$OLD_SPEC")
+          NEW_VR=$(extract_vr "$NEW_SPEC")
 
-          if [ -n "$NEW_VER" ] && [ "$OLD_VER" != "$NEW_VER" ]; then
-            echo "Version bumped from '$OLD_VER' to '$NEW_VER'."
+          echo "Previous Version-Release: '$OLD_VR'"
+          echo "Current  Version-Release: '$NEW_VR'"
+
+          if [ -n "$NEW_VR" ] && [ "$OLD_VR" != "$NEW_VR" ]; then
+            echo "Version or Release bumped from '$OLD_VR' to '$NEW_VR'."
             echo "bumped=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Version unchanged. Skipping Copr rebuild."
+            echo "Version and Release unchanged. Skipping Copr rebuild."
             echo "bumped=false" >> "$GITHUB_OUTPUT"
           fi
 
