@@ -97,7 +97,7 @@ Read-only, no writes to GPU MMIO anywhere. The registers accessed simply aren't 
 | NVIDIA L40S | 0x26b9 | GDDR6 ADC | Legacy byte |
 | NVIDIA A10 | 0x2236 | GDDR6 ADC | Legacy byte |
 
-## Building
+## Building & Installation
 
 Pre-built RPMs are available via COPR. Subscribe to the repo and install:
 
@@ -107,6 +107,14 @@ sudo dnf install gddr7_temp
 ```
 
 The spec file uses the **akmod** build pattern, so the kernel module is compiled automatically for your running kernel after installation.
+
+## Development Setup
+
+For IDE / `clangd` support, run `make ide` to generate the required headers and `compile_commands.json`:
+
+```bash
+make ide
+```
 
 ## Usage
 
