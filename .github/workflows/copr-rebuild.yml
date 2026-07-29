@@ -2,14 +2,58 @@ name: Copr Auto Rebuild
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
+    paths:
+      - 'gddr7_temp-kmod.spec'
+
+# 1. 严格限制 GITHUB_TOKEN 的默认权限为只读
+permissions:
+  contents: read
 
 jobs:
   trigger-copr-build:
     runs-on: ubuntu-latest
     steps:
-      - name: Poke Copr Custom Webhook
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整提交历史，以保障 github.event.before 可查
+
+      - name: Check if gddr7_temp_version changed
+        id: check_version
+        shell: bash
         run: |
+          set -euo pipefail
+
+          # 获取本次 Push/Merge 发生前 main 分支的 Commit SHA
+          BEFORE_SHA="${{ github.event.before }}"
+
+          # 防护：如果是新分支建立或初始 Push，before 为全 0，退回使用 HEAD~1
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ] || [ -z "$BEFORE_SHA" ]; then
+            BEFORE_SHA="HEAD~1"
+          fi
+
+          # 提取 Push 前 main 分支的 %global gddr7_temp_version 版本号
+          OLD_VER=$(git show "$BEFORE_SHA":gddr7_temp-kmod.spec 2>/dev/null | grep -E '^\s*%global\s+gddr7_temp_version\s+' | awk '{print $3}' || true)
+
+          # 提取当前提交的 %global gddr7_temp_version 版本号
+          NEW_VER=$(grep -E '^\s*%global\s+gddr7_temp_version\s+' gddr7_temp-kmod.spec | awk '{print $3}' || true)
+
+          echo "Version before push/merge: '$OLD_VER'"
+          echo "Version after push/merge:  '$NEW_VER'"
+
+          if [ -n "$NEW_VER" ] && [ "$OLD_VER" != "$NEW_VER" ]; then
+            echo "Version bumped from '$OLD_VER' to '$NEW_VER'."
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version unchanged. Skipping Copr rebuild."
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Poke Copr Custom Webhook
+        if: steps.check_version.outputs.bumped == 'true'
+        run: |
+          # 使用 -fsSL 静默失败、防 URL/凭据泄露，绝不 echo 环境变量
           curl -fsSL -X POST "$COPR_WEBHOOK_URL"
         env:
           COPR_WEBHOOK_URL: ${{ secrets.COPR_WEBHOOK_URL }}

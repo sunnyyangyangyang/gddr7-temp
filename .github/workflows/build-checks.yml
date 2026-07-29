@@ -2,9 +2,12 @@ name: Build Checks
 
 on:
   push:
-    branches: [ main, refactor/** ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
   rpmbuild:
@@ -53,7 +56,8 @@ jobs:
 
   ko-compile:
     runs-on: ubuntu-latest
-    container: fedora:44
+    container:
+      image: fedora:latest
     steps:
       - uses: actions/checkout@v4
 
