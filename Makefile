@@ -18,11 +18,20 @@ modules_install:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
 
 # Generate compile_commands.json for clangd/IDE support.
-ide:
-	@REAL_KDIR=$$(readlink -f /lib/modules/$$(uname -r)/build); \
+ide: gpu_offsets_generated.h
+	@if [ -n "$(KDIR)" ]; then \
+		REAL_KDIR=$$(readlink -f "$(KDIR)"); \
+	elif [ -d "/lib/modules/$$(uname -r)/build" ]; then \
+		REAL_KDIR=$$(readlink -f /lib/modules/$$(uname -r)/build); \
+	else \
+		echo "ERROR: Kernel build directory not found. Please set KDIR or install kernel-devel."; \
+		exit 1; \
+	fi; \
 	python3 gen_compile_commands.py $(PWD) "$$REAL_KDIR"; \
 	echo "Generated compile_commands.json (KDIR=$$REAL_KDIR)"
 
 clean:
 	rm -f gpu_offsets_generated.h compile_commands.json
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
+	@if [ -n "$(KDIR)" ] && [ -d "$(KDIR)" ]; then \
+		$(MAKE) -C $(KDIR) M=$(PWD) clean; \
+	fi
