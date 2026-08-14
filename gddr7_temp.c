@@ -2,7 +2,7 @@
 //
 // Reads supported NVIDIA GPUs (offset tables in offsets.yaml):
 //   (A) VRAM temperature sensors — per-module with max hotspot:
-//       - GDDR7 DQR MR-code (Blackwell, e.g. RTX 5090)
+//       - GDDR7 DQR MR-code (Blackwell — RTX 5090 / 5080 / 5070 Ti / 5070)
 //       - GDDR6 ADC 12-bit fixed-point /32 (Ada/older, e.g. RTX 4090)
 //   (B) THERM module internal hotspot channels:
 //       per-model channel count at fixed BAR0 offsets, plus a derived sensor

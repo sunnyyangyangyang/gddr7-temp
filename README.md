@@ -11,7 +11,7 @@ The module exposes two families of sensors, each as an independent hwmon device 
 ### VRAM Temperature Sensors
 Per-module memory temperature via the VRAM register block at BAR0. Two decode algorithms depending on GPU generation:
 
-- **GDDR7 DQR MR-code** (Blackwell, e.g. RTX 5090): reads validity + data words per module; MR-code decoding converts raw values to °C.
+- **GDDR7 DQR MR-code** (Blackwell — RTX 5090 / 5080 / 5070 Ti / 5070): reads validity + data words per module; MR-code decoding converts raw values to °C.
 - **GDDR6 ADC fixed-point** (Ada / Ampere, e.g. RTX 40/30 series): reads lower 12-bit ADC value divided by 32 to get °C.
 
 The "hotspot" sensor reports the maximum across all valid modules.
