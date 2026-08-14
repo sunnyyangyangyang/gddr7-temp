@@ -54,8 +54,13 @@ Read-only, no writes to GPU MMIO anywhere. The registers accessed simply aren't 
 
 | GPU | Device ID | VRAM Sensor | THERM Sensor |
 |---|---|---|---|
-| RTX 5090 | 0x2b85 | GDDR7 DQR (16 modules) | Blackwell BJT (6 channels) |
-| RTX 5070 Ti | 0x2c05 | — | Blackwell BJT (6 channels) |
+| RTX 5090 | 0x2b85 | GDDR7 DQR (8 modules) | Blackwell BJT (6 channels) |
+| RTX 5080 | 0x2c02 | GDDR7 DQR (4 modules)* | Blackwell BJT (6 channels) |
+| RTX 5070 Ti | 0x2c05 | GDDR7 DQR (4 modules)* | Blackwell BJT (6 channels) |
+| RTX 5070 | 0x2f04 | GDDR7 DQR (3 modules)** | Blackwell BJT (6 channels) ** |
+
+\* Module count derived from bus width / 64 (256-bit). Register offsets are shared with the real-hardware-verified RTX 5090 layout; per-model slot counts still pending verification on actual hardware.
+\*\* GB205 die — all register offsets assumed identical to GB203, unverified on real hardware.
 
 ### RTX 40 Series (Ada Lovelace)
 

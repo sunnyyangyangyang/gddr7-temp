@@ -28,8 +28,42 @@
     stride: 0x00000004
     num_channels: 6
 
+- device_id: 0x2c02
+  name: "RTX 5080"
+  vram:
+    type: VRAM_GDDR7_DQR
+    module0: 0x009024C0
+    vld_off: 0x10
+    stride: 0x00004000
+    num_modules: 4   # heuristic (256-bit/64); verify valid-slot count on real hardware before finalizing
+  therm:
+    type: THERM_BLACKWELL_BJT
+    ch0: 0x00AD0A90
+    stride: 0x00000004
+    num_channels: 6
+
 - device_id: 0x2c05
   name: "RTX 5070 Ti"
+  vram:
+    type: VRAM_GDDR7_DQR
+    module0: 0x009024C0
+    vld_off: 0x10
+    stride: 0x00004000
+    num_modules: 4   # heuristic (256-bit/64); verify valid-slot count on real hardware before finalizing
+  therm:
+    type: THERM_BLACKWELL_BJT
+    ch0: 0x00AD0A90
+    stride: 0x00000004
+    num_channels: 6
+
+- device_id: 0x2f04
+  name: "RTX 5070"
+  vram:
+    type: VRAM_GDDR7_DQR
+    module0: 0x009024C0
+    vld_off: 0x10
+    stride: 0x00004000
+    num_modules: 3   # heuristic (192-bit/64); GB205 die, offsets assumed identical to GB203 — unverified on real hardware
   therm:
     type: THERM_BLACKWELL_BJT
     ch0: 0x00AD0A90
