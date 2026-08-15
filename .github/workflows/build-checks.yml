@@ -61,13 +61,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install kernel headers and tools
+      - name: Install kernel headers, Rust toolchain and tools
         shell: bash
         run: |
           set -euo pipefail
-          dnf install -y kernel-devel make gcc python3-pyyaml
+          # rustc must match the kernel's CONFIG_RUSTC_VERSION_TEXT; on Fedora
+          # both ship in lockstep from the same release.
+          dnf install -y kernel-devel make gcc python3-pyyaml rust
 
-      - name: Build kernel module
+      - name: Build kernel module (Rust for Linux)
         shell: bash
         run: |
           set -euo pipefail
