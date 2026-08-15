@@ -820,45 +820,33 @@ unsafe impl Sync for Gddr7Temp {}
 
 impl kernel::Module for Gddr7Temp {
     fn init(_module: &'static ThisModule) -> Result<Self> {
-        /* Iterate all NVIDIA devices until one is in our offset table — same as
-         * the C version, except we drop the reference of every non-matching
-         * device (the C loop leaks those).
-         *
-         * pci_get_device(vendor, dev, from) continues scanning after `from` by
-         * dereferencing it, so the cursor must stay referenced for one extra
-         * iteration: we put the old cursor only after the lookup that used it. */
-        let mut from: *mut bindings::pci_dev = core::ptr::null_mut(); // cursor; ref held while non-null
+        /* Iterate all NVIDIA devices until one is in our offset table — mirrors
+         * the C idiom exactly. pci_get_device() consumes its `from` cursor's
+         * reference itself ("The reference count for @from is always decremented
+         * if it is not %NULL" — drivers/pci/search.c, v7.1), so no manual puts:
+         * each returned candidate carries a fresh reference that either becomes
+         * the next cursor (consumed by the following call) or, on match, ours. */
+        let mut from: *mut bindings::pci_dev = core::ptr::null_mut(); // ref consumed by the next call
         let mut found: Option<(*mut bindings::pci_dev, usize)> = None;
         loop {
-            /* SAFETY: `from` is NULL or live — we own its reference. */
+            /* SAFETY: `from` is NULL or live — its reference stays ours until the
+             * call below consumes it. */
             let cand = unsafe { bindings::pci_get_device(NV_VENDOR_ID as u32, PCI_ANY_ID, from) };
 
             if !cand.is_null() {
                 match GPU_TABLES.iter().position(|t| t.device_id == unsafe { (*cand).device }) {
                     Some(idx) => {
-                        found = Some((cand, idx));
+                        found = Some((cand, idx)); // we own its reference now
                         break;
                     }
                     None => {} // keep scanning — `cand` becomes the next cursor
                 }
             }
 
-            /* Advance: drop the old cursor's reference (the lookup above was its
-             * last user); a non-matching candidate takes over as the new cursor. */
-            let prev = from;
-            if !prev.is_null() {
-                unsafe { bindings::pci_dev_put(prev); }
-            }
             if cand.is_null() {
-                from = core::ptr::null_mut(); // clear stale pointer, end of list
-                break;
+                break; // end of list — the kernel already consumed `from`
             }
             from = cand;
-        }
-
-        /* Drop the last cursor reference (the found device is a different one). */
-        if !from.is_null() {
-            unsafe { bindings::pci_dev_put(from); }
         }
 
         let (pdev, table_idx) = match found {
