@@ -69,11 +69,14 @@ jobs:
           set -euo pipefail
           KERNEL_VER=$(ls /usr/src/kernels)
           echo "Detected kernel: $KERNEL_VER"
+          # Copy the whole tree (minus VCS metadata) and let the repo Makefile
+          # be the single source of build truth — it runs codegen from
+          # offsets.yaml and then kbuild. No file lists are duplicated here,
+          # so adding/renaming sources cannot silently break this job.
           mkdir -p build
-          cp offsets.yaml gen_offsets.py gpu_offsets.h gddr7_temp.c Makefile build/
+          tar --exclude=.git --exclude=build -cf - . | tar -xf - -C build
           cd build
-          python3 gen_offsets.py offsets.yaml gpu_offsets_generated.h
-          make -C /usr/src/kernels/${KERNEL_VER} M=$(pwd) modules
+          make modules KVER="${KERNEL_VER}" KDIR="/usr/src/kernels/${KERNEL_VER}"
 
       - name: Verify kernel module artifact exists
         shell: bash
