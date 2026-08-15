@@ -42,6 +42,12 @@ The THERM register offsets and decoding approach were discovered through the com
 
 Thank you to both communities for the research and insights!
 
+The GDDR7 DQR / Blackwell BJT register definitions used for the RTX 5080, 5070 Ti and 5070 entries were taken from and cross-checked against:
+- [ThomasBaruzier/gddr6-core-junction-vram-temps](https://github.com/ThomasBaruzier/gddr6-core-junction-vram-temps) — GDDR7 DQR + Blackwell BJT register definitions (primary source for these offsets)
+- [biGGer — "RTX 50 GPU Temps" gist](https://gist.github.com/biGGer/d8e8a8bacea338d232a65b530b1e2353) — independent confirmation of the same offsets
+
+Thank you for sharing your findings!
+
 ## Why kernel space?
 
 The gddr6 userspace tool requires `iomem=relaxed` or root access to `/dev/mem`. This module uses `ioremap` instead — no kernel boot parameter tweaks needed, just load the module and read.
