@@ -11,7 +11,7 @@ The module exposes two families of sensors, each as an independent hwmon device 
 ### VRAM Temperature Sensors
 Per-module memory temperature via the VRAM register block at BAR0. Two decode algorithms depending on GPU generation:
 
-- **GDDR7 DQR MR-code** (Blackwell, e.g. RTX 5090): reads validity + data words per module; MR-code decoding converts raw values to °C.
+- **GDDR7 DQR MR-code** (Blackwell — RTX 5090 / 5080 / 5070 Ti / 5070): reads validity + data words per module; MR-code decoding converts raw values to °C.
 - **GDDR6 ADC fixed-point** (Ada / Ampere, e.g. RTX 40/30 series): reads lower 12-bit ADC value divided by 32 to get °C.
 
 The "hotspot" sensor reports the maximum across all valid modules.
@@ -42,6 +42,12 @@ The THERM register offsets and decoding approach were discovered through the com
 
 Thank you to both communities for the research and insights!
 
+The GDDR7 DQR / Blackwell BJT register definitions used for the RTX 5080, 5070 Ti and 5070 entries were taken from and cross-checked against:
+- [ThomasBaruzier/gddr6-core-junction-vram-temps](https://github.com/ThomasBaruzier/gddr6-core-junction-vram-temps) — GDDR7 DQR + Blackwell BJT register definitions (primary source for these offsets)
+- [biGGer — "RTX 50 GPU Temps" gist](https://gist.github.com/biGGer/d8e8a8bacea338d232a65b530b1e2353) — independent confirmation of the same offsets
+
+Thank you for sharing your findings!
+
 ## Why kernel space?
 
 The gddr6 userspace tool requires `iomem=relaxed` or root access to `/dev/mem`. This module uses `ioremap` instead — no kernel boot parameter tweaks needed, just load the module and read.
@@ -54,8 +60,13 @@ Read-only, no writes to GPU MMIO anywhere. The registers accessed simply aren't 
 
 | GPU | Device ID | VRAM Sensor | THERM Sensor |
 |---|---|---|---|
-| RTX 5090 | 0x2b85 | GDDR7 DQR (16 modules) | Blackwell BJT (6 channels) |
-| RTX 5070 Ti | 0x2c05 | — | Blackwell BJT (6 channels) |
+| RTX 5090 | 0x2b85 | GDDR7 DQR (8 modules) | Blackwell BJT (6 channels) |
+| RTX 5080 | 0x2c02 | GDDR7 DQR (4 modules)* | Blackwell BJT (6 channels) |
+| RTX 5070 Ti | 0x2c05 | GDDR7 DQR (4 modules)* | Blackwell BJT (6 channels) |
+| RTX 5070 | 0x2f04 | GDDR7 DQR (3 modules)** | Blackwell BJT (6 channels) ** |
+
+\* Module count derived from bus width / 64 (256-bit). Register offsets are shared with the real-hardware-verified RTX 5090 layout; per-model slot counts still pending verification on actual hardware.
+\*\* GB205 die — all register offsets assumed identical to GB203, unverified on real hardware.
 
 ### RTX 40 Series (Ada Lovelace)
 
