@@ -18,3 +18,4 @@ build/
 # research scratch / reference material (not part of the driver)
 .ref/
 .ref-rust/
+.scratch/

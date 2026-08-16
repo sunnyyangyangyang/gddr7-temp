@@ -41,7 +41,13 @@ include!("gpu_tables.inc");
 
 /* ---------------- constants (mirror gddr7_temp.c) ---------------- */
 
-const PCI_ANY_ID: u32 = 0xffff;
+/* v7.1 contract: pci_get_device() takes full-width u32 ids and matches them
+ * against struct pci_device_id { __u32 vendor, device; } with the test
+ * `id->device == PCI_ANY_ID`, where PCI_ANY_ID is (~0) in a 32-bit context —
+ * i.e. 0xFFFFFFFF, NOT the legacy u16-era 0xFFFF. Passing 0x0000FFFF matches
+ * nothing (it is neither ANY nor a real device id), so the scan would see
+ * zero candidates on v7.x kernels. */
+const PCI_ANY_ID: u32 = 0xffff_ffff;
 const GPU_MAX_VRAM_MODULES: i32 = 18;
 const GPU_MAX_THERM_CHS: i32 = 16;
 
@@ -52,10 +58,14 @@ const THERM_LEGACY_LIMIT: u32 = 0x7F;      /* >= 127 °C is the invalid sentinel
 const VRAM_GDDR6_ADC_MASK: u32 = 0xFFF;    /* 12-bit ADC value                    */
 const VRAM_GDDR6_DIVISOR: u32 = 32;        /* raw / 32 = degrees Celsius          */
 
-/* hwmon constants — values from include/linux/hwmon.h (v7.1). */
-const HWMON_TEMP: i32 = 1;         // enum hwmon_sensor_types::hwmon_temp
-const HWMON_T_INPUT: u32 = 1 << 1; // BIT(hwmon_temp_input)
-const HWMON_T_LABEL: u32 = 1 << 21; // BIT(hwmon_temp_label)
+/* hwmon constants — values from include/linux/hwmon.h (v7.1). Two distinct
+ * number spaces are in play: chip_info config[] entries are bitmasks, but
+ * is_visible/read/read_string receive the raw enum value (bit index) — and v7.1's
+ * enum hwmon_temp_attributes starts with hwmon_temp_enable=0, so input=1 and
+ * label=21. Comparing against BIT() masks in the callbacks would match nothing. */
+const HWMON_TEMP: i32 = 1;          // enum hwmon_sensor_types::hwmon_temp
+const HWMON_T_INPUT: u32 = 1;       // hwmon_temp_input (v7.1 enum value)
+const HWMON_T_LABEL: u32 = 21;      // hwmon_temp_label (v7.1 enum value)
 
 /* Sensor family (mirrors C enum sensor_family). */
 const FAM_VRAM: i32 = 0;     /* idx == -1: max hotspot; idx >= 0: single module   */
@@ -583,7 +593,8 @@ static HWMON_OPS: HwmonOps = HwmonOps {
     write: None,
 };
 
-const TEMP_CONFIG: [u32; 2] = [HWMON_T_INPUT | HWMON_T_LABEL, 0];
+/* config[] entries are BITMASKS of the attribute enum values above. */
+const TEMP_CONFIG: [u32; 2] = [(1 << HWMON_T_INPUT) | (1 << HWMON_T_LABEL), 0];
 
 static TEMP_INFO: HwmonChannelInfo = HwmonChannelInfo {
     ty: HWMON_TEMP,
@@ -917,6 +928,6 @@ module! {
     type: Gddr7Temp,
     name: "gddr7_temp",
     authors: ["sunnyyangyangyang"],
-    description: "NVIDIA GPU GDDR7 DQR and THERM temperature sensors (Rust for Linux)",
+    description: "NVIDIA GPU GDDR7 DQR and THERM temperature sensors (Rust for Linux) v0.2",
     license: "GPL",
 }
