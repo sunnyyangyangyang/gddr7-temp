@@ -223,19 +223,47 @@ struct SensorCtx {
     idx: i32,    // -1 for the block's max-hotspot sensor
 }
 
+/* RAII owner of the PCI device reference taken in Module::init(). Drop puts
+ * the reference and, if we enabled MMIO decode for it, disables it again — so
+ * every early return between probe() and full registration cleans up by
+ * construction instead of hand-putting on each error branch. */
+struct PciDevOwner {
+    pdev: *mut bindings::pci_dev, /* held reference                          */
+    mem_enabled: bool,            /* pci_enable_device_mem succeeded          */
+}
+
+impl Drop for PciDevOwner {
+    fn drop(&mut self) {
+        // SAFETY: we hold the reference until this point; disable only what we enabled.
+        if self.mem_enabled {
+            unsafe { bindings::pci_disable_device(self.pdev); }
+        }
+        unsafe { bindings::pci_dev_put(self.pdev); }
+    }
+}
+
+impl PciDevOwner {
+    /* Raw pointer for code that reaches into the device (BAR0, .dev). */
+    fn ptr(&self) -> *mut bindings::pci_dev { self.pdev }
+}
+
 /* Everything the hwmon callbacks need at runtime. Leaked to 'static so that
  * the plain extern "C" callbacks (which cannot capture state) can reach it via
- * STATE; freed in destroy_state() after all hwmon devices are unregistered and
- * the PCI reference is dropped. */
+ * STATE; freed in destroy_state() after all hwmon devices are unregistered —
+ * its drop does the PCI disable/put and the iounmaps. */
 struct GpuState {
-    pdev: *mut bindings::pci_dev,            /* held reference (probe took it)      */
-    dev: *const bindings::device,            /* &pdev->dev — parent for hwmon + PM  */
+    dev: *const bindings::device,      /* &pdev->dev — parent for hwmon + PM  */
     table_idx: usize,                        /* index into GPU_TABLES               */
     vram_region: Option<IoRegion>,           /* one-shot ioremap of the VRAM span   */
     therm_region: Option<IoRegion>,          /* one-shot ioremap of the THERM span  */
     ctxs: KVec<SensorCtx>,                   /* per-sensor drvdata (stable after init) */
     n_sensors: u32,
     hwmon_devs: KVec<*mut bindings::device>, /* registered devices, for teardown    */
+    /* Declared last so the iounmaps precede PCI disable/put when this is dropped —
+     * matching the C exit() order (unregister → iounmap ×2 → disable → put).
+     * Never read by name on purpose: it exists purely for its Drop. */
+    #[allow(dead_code)]
+    pdev_owner: PciDevOwner,           /* held reference + enable state       */
 }
 
 /* Global access for the FFI callbacks. Set in Module::init before any hwmon
@@ -571,11 +599,12 @@ static CHIP_INFO: HwmonChipInfo = HwmonChipInfo {
 
 /* ---------------- registration / teardown ----------------------------- */
 
-fn probe(pdev: *mut bindings::pci_dev, table_idx: usize) -> Result<GpuState> {
-    /* `probe` owns the PCI reference from here on — every error path puts it. */
+fn probe(mut owner: PciDevOwner, table_idx: usize) -> Result<GpuState> {
+    /* `owner` carries the PCI reference; every early return below cleans up via
+     * its Drop (put always, disable only once MMIO was enabled). */
 
-    // SAFETY: `pdev` is a live device; .dev is an embedded field.
-    let dev = unsafe { core::ptr::addr_of!((*pdev).dev) };
+    // SAFETY: the device is live while we hold the reference; .dev is embedded.
+    let dev = unsafe { core::ptr::addr_of!((*owner.ptr()).dev) };
 
     let table = &GPU_TABLES[table_idx];
 
@@ -587,8 +616,7 @@ fn probe(pdev: *mut bindings::pci_dev, table_idx: usize) -> Result<GpuState> {
             table.vram_num_modules,
             table.name
         );
-        unsafe { bindings::pci_dev_put(pdev); }
-        return Err(EINVAL);
+        return Err(EINVAL); // owner drop → put (not yet enabled)
     }
     if !(0..=GPU_MAX_THERM_CHS).contains(&table.therm_num_channels) {
         pr_err!(
@@ -596,16 +624,14 @@ fn probe(pdev: *mut bindings::pci_dev, table_idx: usize) -> Result<GpuState> {
             table.therm_num_channels,
             table.name
         );
-        unsafe { bindings::pci_dev_put(pdev); }
-        return Err(EINVAL);
+        return Err(EINVAL); // owner drop → put (not yet enabled)
     }
 
     let has_vram = table.vram_num_modules > 0;
     let has_therm = table.therm_num_channels > 0;
     if !has_vram && !has_therm {
         pr_err!("gddr7_temp: {} defines no sensors at all\n", table.name);
-        unsafe { bindings::pci_dev_put(pdev); }
-        return Err(EINVAL);
+        return Err(EINVAL); // owner drop → put (not yet enabled)
     }
 
     /* Compute runtime spans from the table. Skip absent blocks to avoid
@@ -630,27 +656,26 @@ fn probe(pdev: *mut bindings::pci_dev, table_idx: usize) -> Result<GpuState> {
     }
 
     /* BAR0 length via resource[0] (equivalent to pci_resource_len(pdev, 0)). */
-    // SAFETY: `pdev` is a live device.
-    let res = unsafe { &(*pdev).resource[0] };
+    // SAFETY: the device is live while we hold the reference.
+    let res = unsafe { &(*owner.ptr()).resource[0] };
     let bar0_len = if res.end < res.start { 0 } else { res.end - res.start + 1 };
 
     if bar0_len < needed {
         pr_err!("gddr7_temp: BAR0 too small, refusing to map\n");
-        unsafe { bindings::pci_dev_put(pdev); }
-        return Err(EINVAL);
+        return Err(EINVAL); // owner drop → put (not yet enabled)
     }
 
     /* Make sure MMIO decode is actually enabled before we try to read it.
      * Refcounted — safe even if nvidia.ko already has the device enabled. */
-    let r = unsafe { bindings::pci_enable_device_mem(pdev) };
+    let r = unsafe { bindings::pci_enable_device_mem(owner.ptr()) };
     if r != 0 {
         pr_err!("gddr7_temp: pci_enable_device_mem failed\n");
-        unsafe { bindings::pci_dev_put(pdev); }
-        return Err(Error::from_errno(r));
+        return Err(Error::from_errno(r)); // owner drop → put (not yet enabled)
     }
+    owner.mem_enabled = true;
 
-    // SAFETY: `pdev` is a live device.
-    let bar0_start = unsafe { (*pdev).resource[0].start };
+    // SAFETY: the device is live while we hold the reference.
+    let bar0_start = unsafe { (*owner.ptr()).resource[0].start };
 
     /* One-shot ioremap of each BAR0 sub-span (both read-only, same as C). */
     let mut vram_region: Option<IoRegion> = None;
@@ -659,9 +684,7 @@ fn probe(pdev: *mut bindings::pci_dev, table_idx: usize) -> Result<GpuState> {
             Ok(region) => vram_region = Some(region),
             Err(_) => {
                 pr_err!("gddr7_temp: ioremap of VRAM region failed\n");
-                unsafe { bindings::pci_disable_device(pdev); }
-                unsafe { bindings::pci_dev_put(pdev); }
-                return Err(ENOMEM);
+                return Err(ENOMEM); // owner drop → disable + put
             }
         }
     }
@@ -672,9 +695,8 @@ fn probe(pdev: *mut bindings::pci_dev, table_idx: usize) -> Result<GpuState> {
             Ok(region) => therm_region = Some(region),
             Err(_) => {
                 pr_err!("gddr7_temp: ioremap of THERM region failed\n");
-                drop(vram_region); // → iounmap via IoRegion::drop
-                unsafe { bindings::pci_disable_device(pdev); }
-                unsafe { bindings::pci_dev_put(pdev); }
+                // `vram_region` drops here (iounmap), then the owner drop does
+                // disable + put.
                 return Err(ENOMEM);
             }
         }
@@ -686,6 +708,8 @@ fn probe(pdev: *mut bindings::pci_dev, table_idx: usize) -> Result<GpuState> {
     let n_sensors = ((if has_vram { table.vram_num_modules + 1 } else { 0 })
         + (if has_therm { table.therm_num_channels + 1 } else { 0 })) as usize;
 
+    /* Bare `?` below is safe: on allocation failure the locals (mapped regions)
+     * and `owner` all drop, doing iounmap + disable + put. */
     let mut ctxs: KVec<SensorCtx> = KVec::with_capacity(n_sensors, GFP_KERNEL)?;
     if has_vram {
         ctxs.push(SensorCtx { family: FAM_VRAM, idx: -1 }, GFP_KERNEL)?; // max-hotspot first
@@ -703,7 +727,6 @@ fn probe(pdev: *mut bindings::pci_dev, table_idx: usize) -> Result<GpuState> {
     let hwmon_devs = KVec::with_capacity(n_sensors, GFP_KERNEL)?;
 
     Ok(GpuState {
-        pdev,
         dev,
         table_idx,
         vram_region,
@@ -711,6 +734,7 @@ fn probe(pdev: *mut bindings::pci_dev, table_idx: usize) -> Result<GpuState> {
         ctxs,
         n_sensors: n_sensors as u32,
         hwmon_devs,
+        pdev_owner: owner, // ownership transfers into the state
     })
 }
 
@@ -784,9 +808,10 @@ fn unregister_registered(st: &GpuState) {
     }
 }
 
-/* Full teardown, in the exact order of gddr7_temp.c's exit(): unregister all
- * hwmon devices first (no read callback may race with unmapped memory), then
- * iounmap (via the IoRegion drops inside GpuState), then PCI disable/put. */
+/* Full teardown, in the order of gddr7_temp.c's exit(): unregister all hwmon
+ * devices first (no read callback may race with unmapped memory), then dropping
+ * GpuState does the iounmaps and — last, via PciDevOwner::drop — PCI
+ * disable/put. */
 unsafe fn destroy_state(state: *mut GpuState) {
     // SAFETY: `state` is a live leaked allocation we exclusively own here.
     let st = unsafe { &*state };
@@ -796,11 +821,8 @@ unsafe fn destroy_state(state: *mut GpuState) {
     /* No callbacks can run from here on — clear the global before freeing. */
     STATE.store(core::ptr::null(), Release);
 
-    // SAFETY: pdev is still referenced (probe took it; nothing else has put it).
-    unsafe { bindings::pci_disable_device(st.pdev); }
-    unsafe { bindings::pci_dev_put(st.pdev); }
-
-    /* Drop GpuState: drops the IoRegions (iounmap) and both KVecs. */
+    /* Drop GpuState: drops the IoRegions (iounmap) and both KVecs, then
+     * PciDevOwner does pci_disable_device + pci_dev_put last. */
     // SAFETY: `state` came from KBox::leak; no other references exist now.
     unsafe { drop(KBox::from_raw(state)); }
 }
@@ -857,8 +879,10 @@ impl kernel::Module for Gddr7Temp {
             }
         };
 
-        /* Probe takes ownership of the PCI reference (puts it on every error). */
-        let state = probe(pdev, table_idx)?;
+        /* Wrap the reference in its RAII owner before probe: from here on every
+         * `?` early return cleans up automatically (put always; disable once MMIO
+         * was enabled) — including a KBox::new failure below, which drops `state`. */
+        let state = probe(PciDevOwner { pdev, mem_enabled: false }, table_idx)?;
 
         // SAFETY: KBox::new allocated a live GpuState; leak() gives stable 'static storage.
         let leaked = KBox::leak(KBox::new(state, GFP_KERNEL)?);
