@@ -924,6 +924,14 @@ impl Drop for Gddr7Temp {
     }
 }
 
+/* TEMP (debug aid): this kernel's module! macro has no `version:` key, so emit
+ * the .modinfo entry by hand — same mechanism the macro uses for description.
+ * Lets `modinfo` and /sys/module/gddr7_temp/version tell this Rust build apart
+ * from the legacy C module (which ships no version). Remove before merge. */
+#[used(compiler)]
+#[link_section = ".modinfo"]
+static __gddr7_temp_version_modinfo: [u8; 22] = *b"version=4.1-rust-test\0";
+
 module! {
     type: Gddr7Temp,
     name: "gddr7_temp",

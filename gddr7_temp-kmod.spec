@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.0
+%global gddr7_temp_version 4.1
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -135,6 +135,11 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.1-1
+- Debug aid: emit temporary MODULE_VERSION (4.1-rust-test) via hand-written
+  .modinfo entry so modinfo and /sys/module/gddr7_temp/version can tell the
+  Rust build apart from the legacy C module; remove before stable release
+
 * Fri Aug 14 2026 Sunny Yang <yxh9956@gmail.com> - 4.0-1
 - Rewrite the module in Rust for Linux (issue #14); same hwmon interface,
   drop-in replacement under the gddr7_temp module name
