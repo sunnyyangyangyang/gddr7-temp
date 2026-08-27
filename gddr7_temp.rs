@@ -935,7 +935,7 @@ impl Drop for Gddr7Temp {
  * from the legacy C module (which ships no version). Remove before merge. */
 #[used(compiler)]
 #[link_section = ".modinfo"]
-static __GDDR7_TEMP_VERSION_MODINFO: [u8; 23] = *b"version=4.10-rust-test\0";
+static __GDDR7_TEMP_VERSION_MODINFO: [u8; 12] = *b"version=4.0\0";
 
 module! {
     type: Gddr7Temp,

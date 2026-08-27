@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.10
+%global gddr7_temp_version 4.0
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -135,68 +135,10 @@ fi
 # Empty dependency anchor package
 
 %changelog
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.10-1
-- Rename temp modinfo marker static to UPPER_SNAKE_CASE
-  (__GDDR7_TEMP_VERSION_MODINFO) to silence the rust-analyzer
-  non_upper_case_globals lint; .modinfo content is byte-based, so
-  modinfo output semantics are unchanged
-
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.9-1
-- IDE: drop kernel sysroot from rust-project.json and pin
-  rust-analyzer.procMacro.server in .vscode/settings.json (written by
-  `make ide`); fixes "cannot find proc-macro server in sysroot" for all
-  pr_*!/module! expansions
-- IDE: rename generated table file gpu_tables.inc -> gpu_tables.rs; RA's
-  VFS only indexes files with the "rs" extension, so include!() of a .inc
-  failed with "failed to load file" (kbuild does not care about suffix)
-- IDE: `make ide` now generates kbuild rust files (bindings_generated.rs,
-  uapi_generated.rs, ...) in the source clone via `make prepare`, fixing
-  unresolved bindings items and missing include!() targets
-
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.8-1
-- ra_postprocess: rewrite proc-macro dylib paths that point into the
-  unbuilt IDE clone to prebuilt copies in $KDIR/rust (RA error "cannot
-  find proc-macro server in sysroot")
-
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.7-1
-- Move gpu_tables.inc ignore from tracked .gitignore to local
-  .git/info/exclude: rust-analyzer cannot load git-ignored files via
-  include! (macro-error "failed to load file")
-
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.6-1
-- ra_postprocess: only emit dep edges that resolve to a project crate; the
-  rust-analyzer schema requires the `crate` index on every dep (name-only
-  edges broke FetchWorkspace deserialization)
-
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.5-1
-- make ide: support prebuilt RPM trees (no rust/ sources) by cloning the
-  matching v<maj.min> tag into .ide-src/ and post-processing the generated
-  project (tools/ra_postprocess.py): drop source-less sysroot crates, add
-  missing direct dep edges like `bindings`
-
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.4-1
-- make ide: default KVER/KDIR to the running kernel and Fedora's installed
-  source tree, so a bare `make ide` just works (still overridable)
-
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.3-1
-- Add `make ide` target: generates rust-project.json for rust-analyzer via
-  the kernel's scripts/generate_rust_analyzer.py (kbuild-equivalent args, this
-  dir passed as OOT exttree); edition/cfgs derived from CONFIG_RUSTC_VERSION
-
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.2-1
-- Fix THERM channel reads: offset was computed as therm_ch0 + ch*stride against
-  a region already based at therm_ch0, so every read fell outside the mapped
-  window and returned ENODATA; now region-relative like the C module
-
-* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.1-1
-- Debug aid: emit temporary MODULE_VERSION (4.1-rust-test) via hand-written
-  .modinfo entry so modinfo and /sys/module/gddr7_temp/version can tell the
-  Rust build apart from the legacy C module; remove before stable release
-
 * Fri Aug 14 2026 Sunny Yang <yxh9956@gmail.com> - 4.0-1
 - Rewrite the module in Rust for Linux (issue #14); same hwmon interface,
   drop-in replacement under the gddr7_temp module name
-- gen_offsets.py now emits a single gpu_tables.inc consumed via include!()
+- gen_offsets.py now emits a single gpu_tables.rs table consumed via include!() (RA VFS only indexes .rs)
 - Fix PCI candidate reference leak on probe of unsupported NVIDIA devices
 
 * Thu Jul 24 2026 Sunny Yang <yxh9956@gmail.com> - 3.0-3
