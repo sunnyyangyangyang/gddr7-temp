@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.2
+%global gddr7_temp_version 4.4
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -135,6 +135,15 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.4-1
+- make ide: default KVER/KDIR to the running kernel and Fedora's installed
+  source tree, so a bare `make ide` just works (still overridable)
+
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.3-1
+- Add `make ide` target: generates rust-project.json for rust-analyzer via
+  the kernel's scripts/generate_rust_analyzer.py (kbuild-equivalent args, this
+  dir passed as OOT exttree); edition/cfgs derived from CONFIG_RUSTC_VERSION
+
 * Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.2-1
 - Fix THERM channel reads: offset was computed as therm_ch0 + ch*stride against
   a region already based at therm_ch0, so every read fell outside the mapped
