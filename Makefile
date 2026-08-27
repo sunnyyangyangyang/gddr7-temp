@@ -21,18 +21,30 @@ gpu_tables.inc: offsets.yaml gen_offsets.py
 .PHONY: modules modules_install clean ide
 
 # IDE support: generate rust-project.json for rust-analyzer with the kernel's
-# own scripts/generate_rust_analyzer.py — the same invocation as kbuild's
-# `rust-analyzer` target in $(KDIR)/rust/Makefile, plus this directory passed
-# as the OOT exttree so our module crate is included. Edition and cfgs are
-# derived from CONFIG_RUSTC_VERSION exactly like rust/Makefile does (2024 at
-# >= 108700; proc_macro span cfgs at >= 108800), so this keeps working across
-# kernel updates. Requires the rust-src component for core/alloc/std sources.
+# own scripts/generate_rust_analyzer.py (same invocation as kbuild's
+# `rust-analyzer` target in $(KDIR)/rust/Makefile, this dir passed as OOT
+# exttree). Edition/cfgs derived from CONFIG_RUSTC_VERSION like rust/Makefile
+# does. Installed RPM trees ship prebuilt rmeta only (no .rs sources), so when
+# $(KDIR) lacks them we clone the matching v<maj.min> tag into .ide-src/
+# (git-ignored, ~1GB) and generate against that; tools/ra_postprocess.py then
+# drops source-less sysroot crates (RA falls back to its bundled std by name)
+# and adds direct dep edges the generator missed (e.g. `use bindings::...`).
+KTAG    := v$(shell echo $(KVER) | cut -d. -f1,2)
+IDE_SRC ?= $(PWD)/.ide-src/$(KTAG)
+
 ide: gpu_tables.inc
-	@[ -n "$(KVER)" ] || { echo "ERROR: KVER not set"; exit 1; }
 	@[ -n "$(KDIR)" ] || { echo "ERROR: KDIR not set"; exit 1; }
 	@test -f "$(KDIR)/scripts/generate_rust_analyzer.py" || \
 	  { echo "ERROR: $(KDIR) has no scripts/generate_rust_analyzer.py (kernel too old?)"; exit 1; }
-	@RUSTCV=$$(grep -m1 '^CONFIG_RUSTC_VERSION=' "/boot/config-$(KVER)" | cut -d= -f2); \
+	@SRC="$(KDIR)"; [ -f "$$SRC/rust/kernel/lib.rs" ] || SRC="$(IDE_SRC)"; \
+	if [ ! -f "$$SRC/rust/kernel/lib.rs" ]; then \
+	  echo "INFO: $(KDIR) has no rust sources (prebuilt RPM); cloning torvalds/linux $(KTAG) into $$SRC ..."; \
+	  mkdir -p "$$(dirname "$$SRC")"; \
+	  git clone --quiet --depth 1 --branch "$(KTAG)" https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git "$$SRC" || exit 1; \
+	fi; \
+	mkdir -p "$$SRC/include/generated"; \
+	cp "$(KDIR)/include/generated/rustc_cfg" "$$SRC/include/generated/" 2>/dev/null || true; \
+	RUSTCV=$$(grep -m1 '^CONFIG_RUSTC_VERSION=' "/boot/config-$(KVER)" | cut -d= -f2); \
 	CORE_EDITION=$$([ "$$RUSTCV" -ge 108700 ] && echo 2024 || echo 2021); \
 	SPAN_CFG=""; [ "$$RUSTCV" -ge 108800 ] && SPAN_CFG='proc_macro_span_file proc_macro_span_location'; \
 	SYSROOT=$$(rustc --print sysroot); \
@@ -43,8 +55,9 @@ ide: gpu_tables.inc
 	  --cfgs='syn=feature="clone-impls" feature="derive" feature="full" feature="parsing" feature="printing" feature="proc-macro" feature="visit-mut"' \
 	  --cfgs='pin_init_internal=kernel USE_RUSTC_FEATURES' \
 	  --cfgs='pin_init=kernel USE_RUSTC_FEATURES' \
-	  "$(KDIR)" "$(KDIR)" "$$SYSROOT" "$$SYSROOT/lib/rustlib/src/rust/library" "$(PWD)" > rust-project.json
-	@echo "rust-project.json written ($(KVER)); reload your IDE window to pick it up."
+	  "$$SRC" "$$SRC" "$(KDIR)/rust" "$$SYSROOT/lib/rustlib/src/rust/library" "$(PWD)" > rust-project.json && \
+	python3 tools/ra_postprocess.py rust-project.json "$(KDIR)/rust" && \
+	echo "rust-project.json written (sources: $$SRC); reload your IDE window to pick it up."
 
 modules: gpu_tables.inc
 	@[ -n "$(KVER)" ] || { echo "ERROR: KVER not set"; exit 1; }

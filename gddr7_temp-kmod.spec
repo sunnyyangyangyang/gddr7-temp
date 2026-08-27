@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.4
+%global gddr7_temp_version 4.8
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -135,6 +135,27 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.8-1
+- ra_postprocess: rewrite proc-macro dylib paths that point into the
+  unbuilt IDE clone to prebuilt copies in $KDIR/rust (RA error "cannot
+  find proc-macro server in sysroot")
+
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.7-1
+- Move gpu_tables.inc ignore from tracked .gitignore to local
+  .git/info/exclude: rust-analyzer cannot load git-ignored files via
+  include! (macro-error "failed to load file")
+
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.6-1
+- ra_postprocess: only emit dep edges that resolve to a project crate; the
+  rust-analyzer schema requires the `crate` index on every dep (name-only
+  edges broke FetchWorkspace deserialization)
+
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.5-1
+- make ide: support prebuilt RPM trees (no rust/ sources) by cloning the
+  matching v<maj.min> tag into .ide-src/ and post-processing the generated
+  project (tools/ra_postprocess.py): drop source-less sysroot crates, add
+  missing direct dep edges like `bindings`
+
 * Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.4-1
 - make ide: default KVER/KDIR to the running kernel and Fedora's installed
   source tree, so a bare `make ide` just works (still overridable)
