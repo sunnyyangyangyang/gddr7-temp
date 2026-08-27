@@ -13,6 +13,11 @@ tree). This script:
 - adds missing direct dep edges by scanning each module's top-level
   `use <name>::` imports (the generator derives deps from kbuild flags and
   misses e.g. a bare `use bindings::...`).
+- drops the top-level "sysroot" field: RA uses it to locate the
+  rust-analyzer-proc-macro-srv binary (<sysroot>/libexec|lib), which does not
+  exist in $KDIR/rust — every proc-macro then fails with "cannot find
+  proc-macro server in sysroot". Without the field, RA falls back to the
+  rustc-discovered sysroot (e.g. /usr on Fedora) where the binary ships.
 
 Usage: ra_postprocess.py <rust-project.json> [prebuilt_rust_dir]   (in place)
 """
@@ -72,6 +77,11 @@ if fallback:
             alt = os.path.join(fallback, f"lib{c['display_name']}.so")
             if os.path.exists(alt):
                 c['proc_macro_dylib_path'] = alt
+
+# Drop the kernel sysroot: it breaks rust-analyzer's proc-macro-srv discovery
+# (see docstring). All crates have explicit root_modules, so nothing else
+# needs this field.
+d.pop('sysroot', None)
 
 d['crates'] = final
 json.dump(d, open(path, 'w'), indent=1)

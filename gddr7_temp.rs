@@ -36,8 +36,11 @@ use kernel::sync::atomic::{Acquire, Atomic, Release};
  * ENOMEM); these come from linux/err.h via the generated bindings. */
 use bindings::{ENODATA as ENODATA_RAW, EOPNOTSUPP as EOPNOTSUPP_RAW};
 
-/* Generated from offsets.yaml — GpuOffsetTable / GPU_TABLES / NV_VENDOR_ID. */
-include!("gpu_tables.inc");
+/* Generated from offsets.yaml — GpuOffsetTable / GPU_TABLES / NV_VENDOR_ID.
+ * .rs suffix (not .inc): rust-analyzer's VFS only indexes "rs" files, so an
+ * include!() of a .inc file fails with "failed to load file". kbuild does not
+ * care about the suffix. */
+include!("gpu_tables.rs");
 
 /* ---------------- constants (mirror gddr7_temp.c) ---------------- */
 
@@ -932,7 +935,7 @@ impl Drop for Gddr7Temp {
  * from the legacy C module (which ships no version). Remove before merge. */
 #[used(compiler)]
 #[link_section = ".modinfo"]
-static __gddr7_temp_version_modinfo: [u8; 22] = *b"version=4.8-rust-test\0";
+static __GDDR7_TEMP_VERSION_MODINFO: [u8; 23] = *b"version=4.10-rust-test\0";
 
 module! {
     type: Gddr7Temp,

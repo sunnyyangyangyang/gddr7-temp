@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.8
+%global gddr7_temp_version 4.10
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -135,6 +135,24 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.10-1
+- Rename temp modinfo marker static to UPPER_SNAKE_CASE
+  (__GDDR7_TEMP_VERSION_MODINFO) to silence the rust-analyzer
+  non_upper_case_globals lint; .modinfo content is byte-based, so
+  modinfo output semantics are unchanged
+
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.9-1
+- IDE: drop kernel sysroot from rust-project.json and pin
+  rust-analyzer.procMacro.server in .vscode/settings.json (written by
+  `make ide`); fixes "cannot find proc-macro server in sysroot" for all
+  pr_*!/module! expansions
+- IDE: rename generated table file gpu_tables.inc -> gpu_tables.rs; RA's
+  VFS only indexes files with the "rs" extension, so include!() of a .inc
+  failed with "failed to load file" (kbuild does not care about suffix)
+- IDE: `make ide` now generates kbuild rust files (bindings_generated.rs,
+  uapi_generated.rs, ...) in the source clone via `make prepare`, fixing
+  unresolved bindings items and missing include!() targets
+
 * Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.8-1
 - ra_postprocess: rewrite proc-macro dylib paths that point into the
   unbuilt IDE clone to prebuilt copies in $KDIR/rust (RA error "cannot
