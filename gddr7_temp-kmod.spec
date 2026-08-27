@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 3.3
+%global gddr7_temp_version 4.0
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -12,15 +12,13 @@ Summary:        Kernel module to read NVIDIA GPU GDDR7 DQR and THERM temperature
 
 License:        GPL-2.0-only
 URL:            https://github.com/sunnyyangyangyang/gddr7-temp
-Source0:        gddr7_temp.c
+Source0:        gddr7_temp.rs
 Source1:        Makefile
 Source2:        gddr7_temp-kmod.spec.in
 Source3:        LICENSE
 Source4:        gddr7_temp-load.service
-Source5:        gpu_offsets.h
-Source6:        offsets.yaml
-Source7:        gen_offsets.py
-Source8:        gen_compile_commands.py
+Source5:        offsets.yaml
+Source6:        gen_offsets.py
 
 # Akmod BuildRequires
 BuildRequires:  kmodtool
@@ -28,6 +26,8 @@ BuildRequires:  akmods
 BuildRequires:  gcc make rpm-build python3 python3-pyyaml
 BuildRequires:  kernel-devel
 BuildRequires:  systemd-rpm-macros
+# Rust for Linux module: rustc must match the kernel's CONFIG_RUSTC_VERSION_TEXT
+BuildRequires:  rust
 
 # Runtime Requirements
 Requires:       systemd
@@ -39,11 +39,12 @@ Requires:       %{name}-kmod-common = %{?epoch:%{epoch}:}%{version}-%{release}
 %{expand:%(kmodtool --target %{_target_cpu} --kmodname %{name} --akmod 2>/dev/null) }
 
 %description
-gddr7_temp is a kernel module that reads NVIDIA GPU GDDR7 DQR and THERM
-internal hotspot temperature sensors directly via ioremap and exposes
-them through the Linux hwmon subsystem.
+gddr7_temp is a kernel module, written in Rust for Linux, that reads NVIDIA
+GPU GDDR7 DQR and THERM internal hotspot temperature sensors directly via
+ioremap and exposes them through the Linux hwmon subsystem.
 
-Supported GPUs are defined in offsets.yaml (currently RTX 5090 GB202).
+Supported GPUs are defined in offsets.yaml (RTX 5090 / 5080 / 5070 Ti / 5070).
+Requires a kernel built with CONFIG_RUST=y (Rust for Linux 7.x+).
 
 This module is reverse-engineered and unofficial. It performs read-only
 access to GPU MMIO registers that are not privilege-locked, without
@@ -70,8 +71,6 @@ cp %{SOURCE3} .
 cp %{SOURCE4} .
 cp %{SOURCE5} .
 cp %{SOURCE6} .
-cp %{SOURCE7} .
-cp %{SOURCE8} .
 
 %install
 # --- Create and install the kmod SRPM for akmods ---
@@ -136,6 +135,12 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Fri Aug 14 2026 Sunny Yang <yxh9956@gmail.com> - 4.0-1
+- Rewrite the module in Rust for Linux (issue #14); same hwmon interface,
+  drop-in replacement under the gddr7_temp module name
+- gen_offsets.py now emits a single gpu_tables.rs table consumed via include!() (RA VFS only indexes .rs)
+- Fix PCI candidate reference leak on probe of unsupported NVIDIA devices
+
 * Thu Jul 24 2026 Sunny Yang <yxh9956@gmail.com> - 3.0-3
 - Refactor: replace hardcoded offsets with YAML-driven lookup table
 - Add multi-GPU support via offsets.yaml configuration
