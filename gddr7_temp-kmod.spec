@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.1
+%global gddr7_temp_version 4.2
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -135,6 +135,11 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.2-1
+- Fix THERM channel reads: offset was computed as therm_ch0 + ch*stride against
+  a region already based at therm_ch0, so every read fell outside the mapped
+  window and returned ENODATA; now region-relative like the C module
+
 * Wed Aug 26 2026 Sunny Yang <yxh9956@gmail.com> - 4.1-1
 - Debug aid: emit temporary MODULE_VERSION (4.1-rust-test) via hand-written
   .modinfo entry so modinfo and /sys/module/gddr7_temp/version can tell the

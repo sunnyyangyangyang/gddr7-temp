@@ -377,7 +377,9 @@ fn therm_read_channel(st: &GpuState, ch: i32) -> Option<i32> {
         return None;
     }
     let region = st.therm_region.as_ref()?;
-    let off = t.therm_ch0 + (ch as u32).wrapping_mul(t.therm_ch_stride);
+    /* Region base already sits at therm_ch0 (see probe()), so the offset is
+     * region-relative — mirroring C's `ioread32(therm_base + ch*stride)`. */
+    let off = (ch as u32).wrapping_mul(t.therm_ch_stride);
     let raw = region.try_read32(off as usize).ok()?;
 
     if raw == 0xFFFF_FFFF {
@@ -930,7 +932,7 @@ impl Drop for Gddr7Temp {
  * from the legacy C module (which ships no version). Remove before merge. */
 #[used(compiler)]
 #[link_section = ".modinfo"]
-static __gddr7_temp_version_modinfo: [u8; 22] = *b"version=4.1-rust-test\0";
+static __gddr7_temp_version_modinfo: [u8; 22] = *b"version=4.2-rust-test\0";
 
 module! {
     type: Gddr7Temp,
