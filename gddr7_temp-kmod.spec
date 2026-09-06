@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.0
+%global gddr7_temp_version 4.1
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -135,6 +135,13 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Sun Sep 6 2026 Sunny Yang <yxh9956@gmail.com> - 4.1-1
+- Version hygiene: drop the stale "v0.2" suffix from the module description
+  (leftover from the pre-Rust-rewrite era; the release is identified by the
+  hand-written .modinfo entry instead)
+- Replace the stale "Remove before merge" comment on the .modinfo version
+  entry; it is the release identifier now
+
 * Fri Aug 14 2026 Sunny Yang <yxh9956@gmail.com> - 4.0-1
 - Rewrite the module in Rust for Linux (issue #14); same hwmon interface,
   drop-in replacement under the gddr7_temp module name
