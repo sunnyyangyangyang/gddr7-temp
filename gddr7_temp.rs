@@ -929,18 +929,20 @@ impl Drop for Gddr7Temp {
     }
 }
 
-/* TEMP (debug aid): this kernel's module! macro has no `version:` key, so emit
- * the .modinfo entry by hand — same mechanism the macro uses for description.
- * Lets `modinfo` and /sys/module/gddr7_temp/version tell this Rust build apart
- * from the legacy C module (which ships no version). Remove before merge. */
+/* This kernel's module! macro has no `version:` key, so the .modinfo entry is
+ * emitted by hand — same mechanism the macro uses for description. Lets
+ * `modinfo` and /sys/module/gddr7_temp/version identify the Rust build and
+ * its release, and tell it apart from the legacy C module (which ships no
+ * version). Keep in sync with %global gddr7_temp_version in
+ * gddr7_temp-kmod.spec. */
 #[used(compiler)]
 #[link_section = ".modinfo"]
-static __GDDR7_TEMP_VERSION_MODINFO: [u8; 12] = *b"version=4.0\0";
+static __GDDR7_TEMP_VERSION_MODINFO: [u8; 12] = *b"version=4.1\0";
 
 module! {
     type: Gddr7Temp,
     name: "gddr7_temp",
     authors: ["sunnyyangyangyang"],
-    description: "NVIDIA GPU GDDR7 DQR and THERM temperature sensors (Rust for Linux) v0.2",
+    description: "NVIDIA GPU GDDR7 DQR and THERM temperature sensors (Rust for Linux)",
     license: "GPL",
 }
