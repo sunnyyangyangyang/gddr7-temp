@@ -130,11 +130,11 @@ make modules KVER=$(uname -r) KDIR=/lib/modules/$(uname -r)/build
 sudo make modules_install KVER=$(uname -r) KDIR=/lib/modules/$(uname -r)/build
 ```
 
-The Makefile is the single source of build truth: it runs codegen from `offsets.yaml` (producing `gpu_tables.inc`) and then invokes kbuild, which compiles `gddr7_temp.rs` with its Rust rules. If your kernel tree does not ship prebuilt Rust bindings (Fedora's do), bindgen + libclang are also needed on the build host.
+The Makefile is the single source of build truth: it runs codegen from `offsets.yaml` (producing `gpu_tables.rs`) and then invokes kbuild, which compiles `gddr7_temp.rs` with its Rust rules. If your kernel tree does not ship prebuilt Rust bindings (Fedora's do), bindgen + libclang are also needed on the build host.
 
 ## Development Setup
 
-The driver is a single source file (`gddr7_temp.rs`) plus the generated `gpu_tables.inc`; GPU offset tables live in `offsets.yaml` and regenerate with any build. Edit `offsets.yaml`, not the `.inc`.
+The driver is a single source file (`gddr7_temp.rs`) plus the generated `gpu_tables.rs`; GPU offset tables live in `offsets.yaml` and regenerate with any build. Edit `offsets.yaml`, not the `.rs`.
 
 ## Usage
 
