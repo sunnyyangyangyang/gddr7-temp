@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.1
+%global gddr7_temp_version 4.2
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -43,7 +43,7 @@ gddr7_temp is a kernel module, written in Rust for Linux, that reads NVIDIA
 GPU GDDR7 DQR and THERM internal hotspot temperature sensors directly via
 ioremap and exposes them through the Linux hwmon subsystem.
 
-Supported GPUs are defined in offsets.yaml (RTX 5090 / 5080 / 5070 Ti / 5070).
+Supported GPUs are defined in offsets.yaml (RTX 5090 / 5080 / 5070 Ti / 5070 / 5060 Ti).
 Requires a kernel built with CONFIG_RUST=y (Rust for Linux 7.x+).
 
 This module is reverse-engineered and unofficial. It performs read-only
@@ -135,6 +135,13 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Mon Sep 21 2026 Sunny Yang <yxh9956@gmail.com> - 4.2-1
+- Add RTX 5060 Ti (GB206 / 0x2d04): GDDR7 DQR, 2 VRAM modules
+  (128-bit/64 heuristic, unverified on real hardware); Blackwell BJT
+  THERM channels, offsets assumed identical to the verified GB203 layout
+- Add RTX 2000 Ada (AD107 / 0x28b0): standard Ada Lovelace scheme —
+  GDDR6 ADC (0xE2A8) + legacy-byte THERM (0x2046C)
+
 * Sun Sep 6 2026 Sunny Yang <yxh9956@gmail.com> - 4.1-1
 - Version hygiene: drop the stale "v0.2" suffix from the module description
   (leftover from the pre-Rust-rewrite era; the release is identified by the

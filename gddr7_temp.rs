@@ -937,7 +937,7 @@ impl Drop for Gddr7Temp {
  * gddr7_temp-kmod.spec. */
 #[used(compiler)]
 #[link_section = ".modinfo"]
-static __GDDR7_TEMP_VERSION_MODINFO: [u8; 12] = *b"version=4.1\0";
+static __GDDR7_TEMP_VERSION_MODINFO: [u8; 12] = *b"version=4.2\0";
 
 module! {
     type: Gddr7Temp,
