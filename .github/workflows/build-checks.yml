@@ -65,9 +65,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # rustc must match the kernel's CONFIG_RUSTC_VERSION_TEXT; on Fedora
-          # both ship in lockstep from the same release.
           dnf install -y kernel-devel make gcc python3-pyyaml rust
+          # The kernel ships prebuilt rust crates (KDIR/rust/*.rmeta) compiled
+          # with the exact rustc of its build (CONFIG_RUSTC_VERSION_TEXT).
+          # kbuild resolves plain `rustc` via PATH, so during Fedora update
+          # windows where the distro rust package is ahead of the last kernel
+          # rebuild (e.g. rust 1.98.1 vs a kernel built with 1.98.0) every
+          # prelude import fails with E0514. Detect the mismatch and put the
+          # exact toolchain (rustup) on the PATH of the following steps.
+          KERNEL_VER=$(ls /usr/src/kernels)
+          KDIR=/usr/src/kernels/$KERNEL_VER
+          # CONFIG_RUSTC_VERSION_TEXT holds the full `rustc --version` output
+          # of the compiler the kernel was built with; reduce both sides to
+          # the bare version number before comparing.
+          RUST_WANT=$(sed -n 's/^CONFIG_RUSTC_VERSION_TEXT="\(.*\)"$/\1/p' $KDIR/.config)
+          RUST_WANT=${RUST_WANT#rustc }
+          RUST_WANT=${RUST_WANT%% *}
+          RUST_HAVE=$(rustc --version | sed 's/^rustc //; s/ .*//')
+          echo "kernel $KERNEL_VER built with rustc $RUST_WANT, distro provides $RUST_HAVE"
+          if [ -n "$RUST_WANT" ] && [ "$RUST_WANT" != "$RUST_HAVE" ]; then
+            dnf install -y rustup
+            rustup toolchain install --profile minimal "$RUST_WANT"
+            RUSTC_BIN=$(rustup which rustc --toolchain "$RUST_WANT")
+            echo "using exact toolchain: $RUSTC_BIN"
+            echo "$(dirname "$RUSTC_BIN")" >> "$GITHUB_PATH"
+          fi
 
       - name: Build kernel module (Rust for Linux)
         shell: bash
