@@ -65,22 +65,22 @@ jobs:
         run: |
           set -euo pipefail
           fedoras=$(python3 - <<'PY' || true
-   import json, re, urllib.request
-   rels, page, total = [], 1, None
-   while True:
-       url = ("https://bodhi.fedoraproject.org/releases/"
-              "?rows_per_page=100&page=%d" % page)
-       with urllib.request.urlopen(url, timeout=30) as fh:
-           d = json.load(fh)
-       rels.extend(d.get("releases", []))
-       total = d.get("total", len(rels))
-       if not d.get("releases") or len(rels) >= total:
-           break
-       page += 1
-   vers = {int(r["name"][1:]) for r in rels
-           if re.fullmatch(r"F\d+", r["name"]) and r.get("state") == "current"}
-   print(json.dumps(sorted(vers)))
-   PY
+          import json, re, urllib.request
+          rels, page, total = [], 1, None
+          while True:
+              url = ("https://bodhi.fedoraproject.org/releases/"
+                     "?rows_per_page=100&page=%d" % page)
+              with urllib.request.urlopen(url, timeout=30) as fh:
+                  d = json.load(fh)
+              rels.extend(d.get("releases", []))
+              total = d.get("total", len(rels))
+              if not d.get("releases") or len(rels) >= total:
+                  break
+              page += 1
+          vers = {int(r["name"][1:]) for r in rels
+                  if re.fullmatch(r"F\d+", r["name"]) and r.get("state") == "current"}
+          print(json.dumps(sorted(vers)))
+          PY
           )
           if [ -z "${fedoras}" ] || [ "${fedoras}" = "[]" ]; then
             # Bodhi API unreachable (or returned nothing) - keep the build
