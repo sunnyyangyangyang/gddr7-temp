@@ -52,17 +52,57 @@ jobs:
           path: ~/gddr7-repo/**/gddr7_temp-*.rpm
           if-no-files-found: error
 
+  fedora-matrix:
+    # Resolve "all actively maintained Fedora versions" at runtime from
+    # Bodhi's release API (state == current), so the workflow never needs
+    # editing when a new Fedora ships or an old one reaches EOL.
+    runs-on: ubuntu-latest
+    outputs:
+      fedoras: ${{ steps.resolve.outputs.fedoras }}
+    steps:
+      - id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          fedoras=$(python3 - <<'PY' || true
+   import json, re, urllib.request
+   rels, page, total = [], 1, None
+   while True:
+       url = ("https://bodhi.fedoraproject.org/releases/"
+              "?rows_per_page=100&page=%d" % page)
+       with urllib.request.urlopen(url, timeout=30) as fh:
+           d = json.load(fh)
+       rels.extend(d.get("releases", []))
+       total = d.get("total", len(rels))
+       if not d.get("releases") or len(rels) >= total:
+           break
+       page += 1
+   vers = {int(r["name"][1:]) for r in rels
+           if re.fullmatch(r"F\d+", r["name"]) and r.get("state") == "current"}
+   print(json.dumps(sorted(vers)))
+   PY
+          )
+          if [ -z "${fedoras}" ] || [ "${fedoras}" = "[]" ]; then
+            # Bodhi API unreachable (or returned nothing) - keep the build
+            # checks running on the known-maintained set instead of failing
+            # the whole PR; update the fallback when Fedoras reach EOL.
+            fedoras='[43, 44]'
+            echo "::warning::Bodhi releases API unavailable; using fallback Fedora list ${fedoras}"
+          fi
+          echo "fedoras=${fedoras}" >> "$GITHUB_OUTPUT"
+
   ko-compile:
-    name: ko-compile (fedora-{{ matrix.fedora }})
+    name: ko-compile (fedora-${{ matrix.fedora }})
+    needs: fedora-matrix
     runs-on: ubuntu-latest
     container:
-      image: fedora:{{ matrix.fedora }}
+      image: fedora:${{ matrix.fedora }}
     strategy:
       fail-fast: false
       matrix:
-        # All actively maintained Fedora releases — update this list when a
-        # new Fedora ships or an old one reaches EOL.
-        fedora: [ 43, 44 ]
+        # Dynamically resolved by the fedora-matrix job (Bodhi release API,
+        # state == current = actively maintained).
+        fedora: ${{ fromJson(needs.fedora-matrix.outputs.fedoras) }}
     steps:
       - uses: actions/checkout@v4
 
