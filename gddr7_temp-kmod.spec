@@ -43,7 +43,7 @@ gddr7_temp is a kernel module, written in Rust for Linux, that reads NVIDIA
 GPU GDDR7 DQR and THERM internal hotspot temperature sensors directly via
 ioremap and exposes them through the Linux hwmon subsystem.
 
-Supported GPUs are defined in offsets.yaml (RTX 5090 / 5080 / 5070 Ti / 5070).
+Supported GPUs are defined in offsets.yaml (RTX 5090 / 5080 / 5070 Ti / 5070 / 5060 Ti).
 Requires a kernel built with CONFIG_RUST=y (Rust for Linux 7.x+).
 
 This module is reverse-engineered and unofficial. It performs read-only

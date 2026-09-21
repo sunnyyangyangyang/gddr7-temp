@@ -13,7 +13,7 @@ The module exposes two families of sensors, each as an independent hwmon device 
 ### VRAM Temperature Sensors
 Per-module memory temperature via the VRAM register block at BAR0. Two decode algorithms depending on GPU generation:
 
-- **GDDR7 DQR MR-code** (Blackwell — RTX 5090 / 5080 / 5070 Ti / 5070): reads validity + data words per module; MR-code decoding converts raw values to °C.
+- **GDDR7 DQR MR-code** (Blackwell — RTX 5090 / 5080 / 5070 Ti / 5070 / 5060 Ti): reads validity + data words per module; MR-code decoding converts raw values to °C.
 - **GDDR6 ADC fixed-point** (Ada / Ampere, e.g. RTX 40/30 series): reads lower 12-bit ADC value divided by 32 to get °C.
 
 The "hotspot" sensor reports the maximum across all valid modules.
@@ -66,9 +66,10 @@ Read-only, no writes to GPU MMIO anywhere. The registers accessed simply aren't 
 | RTX 5080 | 0x2c02 | GDDR7 DQR (4 modules)* | Blackwell BJT (6 channels) |
 | RTX 5070 Ti | 0x2c05 | GDDR7 DQR (4 modules)* | Blackwell BJT (6 channels) |
 | RTX 5070 | 0x2f04 | GDDR7 DQR (3 modules)** | Blackwell BJT (6 channels) ** |
+| RTX 5060 Ti | 0x2d04 | GDDR7 DQR (2 modules)** | Blackwell BJT (6 channels) |
 
 \* Module count derived from bus width / 64 (256-bit). Register offsets are shared with the real-hardware-verified RTX 5090 layout; per-model slot counts still pending verification on actual hardware.
-\*\* GB205 die — all register offsets assumed identical to GB203, unverified on real hardware.
+\*\* GB205/GB206 die — all register offsets assumed identical to GB203, unverified on real hardware.
 
 ### RTX 40 Series (Ada Lovelace)
 
@@ -109,6 +110,7 @@ Read-only, no writes to GPU MMIO anywhere. The registers accessed simply aren't 
 | NVIDIA L4 | 0x27b8 | GDDR6 ADC | Legacy byte |
 | NVIDIA L40S | 0x26b9 | GDDR6 ADC | Legacy byte |
 | NVIDIA A10 | 0x2236 | GDDR6 ADC | Legacy byte |
+| RTX 2000 Ada | 0x28b0 | GDDR6 ADC | Legacy byte |
 
 ## Building & Installation
 

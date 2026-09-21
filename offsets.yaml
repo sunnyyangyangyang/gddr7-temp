@@ -70,6 +70,20 @@
     stride: 0x00000004
     num_channels: 6
 
+- device_id: 0x2d04
+  name: "RTX 5060 Ti"
+  vram:
+    type: VRAM_GDDR7_DQR
+    module0: 0x009024C0
+    vld_off: 0x10
+    stride: 0x00004000
+    num_modules: 2   # heuristic (128-bit/64); GB206 die, offsets assumed identical to GB203 — unverified on real hardware
+  therm:
+    type: THERM_BLACKWELL_BJT
+    ch0: 0x00AD0A90
+    stride: 0x00000004
+    num_channels: 6
+
 # ==============================================================================
 # RTX 40 Series (Ada Lovelace)
 # ==============================================================================
@@ -417,6 +431,20 @@
 
 - device_id: 0x2236
   name: "NVIDIA A10"
+  vram:
+    type: VRAM_GDDR6_ADC
+    module0: 0x0000E2A8
+    vld_off: 0x0
+    stride: 0x0
+    num_modules: 1
+  therm:
+    type: THERM_LEGACY_BYTE
+    ch0: 0x0002046C
+    stride: 0x0
+    num_channels: 1
+
+- device_id: 0x28b0
+  name: "RTX 2000 Ada"
   vram:
     type: VRAM_GDDR6_ADC
     module0: 0x0000E2A8
