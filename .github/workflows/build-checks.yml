@@ -1,8 +1,6 @@
 name: Build Checks
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -55,9 +53,16 @@ jobs:
           if-no-files-found: error
 
   ko-compile:
+    name: ko-compile (fedora-{{ matrix.fedora }})
     runs-on: ubuntu-latest
     container:
-      image: fedora:latest
+      image: fedora:{{ matrix.fedora }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # All actively maintained Fedora releases — update this list when a
+        # new Fedora ships or an old one reaches EOL.
+        fedora: [ 43, 44 ]
     steps:
       - uses: actions/checkout@v4
 
