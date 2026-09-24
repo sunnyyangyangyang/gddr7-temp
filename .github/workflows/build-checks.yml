@@ -55,7 +55,9 @@ jobs:
   fedora-matrix:
     # Resolve "all actively maintained Fedora versions" at runtime from
     # Bodhi's release API (state == current), so the workflow never needs
-    # editing when a new Fedora ships or an old one reaches EOL.
+    # editing when a new Fedora ships or an old one reaches EOL. On top of
+    # that, rawhide (the in-development release) is always included, so
+    # kernel breakage is caught before it reaches a stable Fedora.
     runs-on: ubuntu-latest
     outputs:
       fedoras: ${{ steps.resolve.outputs.fedoras }}
@@ -77,16 +79,19 @@ jobs:
               if not d.get("releases") or len(rels) >= total:
                   break
               page += 1
-          vers = {int(r["name"][1:]) for r in rels
-                  if re.fullmatch(r"F\d+", r["name"]) and r.get("state") == "current"}
-          print(json.dumps(sorted(vers)))
+          vers = sorted(int(r["name"][1:]) for r in rels
+                        if re.fullmatch(r"F\d+", r["name"]) and r.get("state") == "current")
+          # Always append the in-development release; docker only tags it as
+          # "rawhide" (there is no numbered tag until the release ships).
+          print(json.dumps(vers + ["rawhide"]))
           PY
           )
           if [ -z "${fedoras}" ] || [ "${fedoras}" = "[]" ]; then
             # Bodhi API unreachable (or returned nothing) - keep the build
-            # checks running on the known-maintained set instead of failing
-            # the whole PR; update the fallback when Fedoras reach EOL.
-            fedoras='[43, 44]'
+            # checks running on the known-maintained set + rawhide instead
+            # of failing the whole PR; update the fallback when Fedoras
+            # reach EOL.
+            fedoras='[43, 44, "rawhide"]'
             echo "::warning::Bodhi releases API unavailable; using fallback Fedora list ${fedoras}"
           fi
           echo "fedoras=${fedoras}" >> "$GITHUB_OUTPUT"
@@ -101,7 +106,8 @@ jobs:
       fail-fast: false
       matrix:
         # Dynamically resolved by the fedora-matrix job (Bodhi release API,
-        # state == current = actively maintained).
+        # state == current = actively maintained), plus rawhide, which the
+        # resolver always appends for the in-development kernel.
         fedora: ${{ fromJson(needs.fedora-matrix.outputs.fedoras) }}
     steps:
       - uses: actions/checkout@v4
@@ -169,3 +175,28 @@ jobs:
           name: gddr7_temp-ko
           path: build/gddr7_temp.ko
           if-no-files-found: error
+
+  ko-gate:
+    # Overall gate: a single check context that turns green only when ALL
+    # ko-compile matrix jobs (every maintained Fedora + rawhide) succeeded.
+    # The "Protect Main Branch" ruleset requires this one context instead of
+    # the per-matrix "ko-compile (...)" checks (which a static required-check
+    # list cannot track as releases rotate), so the merge decision reduces to
+    # one purposeful signal: this module compiled cleanly on every kernel it
+    # must run on.
+    name: ko-gate
+    needs: [ ko-compile ]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Verify all ko-compile variants passed
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="${{ needs.ko-compile.result }}"
+          echo "ko-compile aggregate result: ${result}"
+          if [ "${result}" != "success" ]; then
+            echo "::error::ko-gate: not all ko-compile jobs succeeded (result: ${result})"
+            exit 1
+          fi
+          echo "All ko-compile variants (incl. rawhide) succeeded; overall gate GREEN."
