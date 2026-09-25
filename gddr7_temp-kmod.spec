@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.3
+%global gddr7_temp_version 4.2
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -83,16 +83,6 @@ sed -e 's|@GDDR7_TEMP_VERSION@|%{gddr7_temp_version}|g' \
     -e 's|@RELEASE@|%{release}|g' \
     %{SOURCE2} > "$SRPM_TOPDIR"/SPECS/gddr7_temp-kmod.spec
 
-# Inject the release version into the module source: replace the
-# @GDDR7_TEMP_VERSION@ modinfo placeholder with the real version, rewrite
-# the modinfo array length to match (the string must live inside the
-# .modinfo section), and drop the now-unused raw-source length const.
-VLEN=$((8 + ${#gddr7_temp_version} + 1))
-sed -i -e 's|@GDDR7_TEMP_VERSION@|%{gddr7_temp_version}|g' \
-    -e "s|\[u8; __GDDR7_TEMP_VERSION_LEN\]|[u8; $VLEN]|" \
-    -e '/^const __GDDR7_TEMP_VERSION_LEN: usize = /d' \
-    %{_builddir}/gddr7_temp-%{version}/gddr7_temp.rs
-
 tar -czf "$SRPM_TOPDIR"/SOURCES/gddr7_temp-kmod-%{version}.tar.gz \
     --transform "s|^gddr7_temp-%{version}|gddr7_temp-kmod-%{version}|" \
     -C %{_builddir} \
@@ -145,14 +135,6 @@ fi
 # Empty dependency anchor package
 
 %changelog
-* Thu Sep 24 2026 Sunny Yang <yxh9956@gmail.com> - 4.3-1
-- Build compatibility with the kernel 7.3 (rawhide) redesign of
-  rust/kernel/io.rs: IoRegion drops its kernel::io (MmioRaw/Mmio)
-  dependency and performs volatile 32-bit reads directly on the
-  ioremap() pointer, so one source tree compiles against every
-  kernel generation; CI now gates merges on all maintained Fedora
-  releases plus rawhide
-
 * Mon Sep 21 2026 Sunny Yang <yxh9956@gmail.com> - 4.2-1
 - Add RTX 5060 Ti (GB206 / 0x2d04): GDDR7 DQR, 2 VRAM modules
   (128-bit/64 heuristic, unverified on real hardware); Blackwell BJT

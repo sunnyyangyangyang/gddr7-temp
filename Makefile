@@ -29,11 +29,7 @@ gpu_tables.rs: offsets.yaml gen_offsets.py
 # (git-ignored, ~1GB) and generate against that; tools/ra_postprocess.py then
 # drops source-less sysroot crates (RA falls back to its bundled std by name)
 # and adds direct dep edges the generator missed (e.g. `use bindings::...`).
-# Upstream tag cloned for IDE sources when the local kernel tree ships no rust
-# sources. Override per run, e.g.:
-#   make ide KTAG=v7.3-rc4   rawhide-era sources (v7.3 not tagged until stable)
-#   make ide KTAG=master     newest mainline
-KTAG    ?= v$(shell echo $(KVER) | cut -d. -f1,2)
+KTAG    := v$(shell echo $(KVER) | cut -d. -f1,2)
 IDE_SRC ?= $(PWD)/.ide-src/$(KTAG)
 
 ide: gpu_tables.rs
@@ -42,12 +38,8 @@ ide: gpu_tables.rs
 	  { echo "ERROR: $(KDIR) has no scripts/generate_rust_analyzer.py (kernel too old?)"; exit 1; }
 	@SRC="$(KDIR)"; [ -f "$$SRC/rust/kernel/lib.rs" ] || SRC="$(IDE_SRC)"; \
 	if [ ! -f "$$SRC/rust/kernel/lib.rs" ]; then \
-	  echo "INFO: $(KDIR) ships prebuilt rust libs only (no .rs sources - normal for distro kernel-devel packages); first run clones torvalds/linux $(KTAG) into $$SRC (cached in git-ignored .ide-src/, a few minutes) ..."; \
+	  echo "INFO: $(KDIR) has no rust sources (prebuilt RPM); cloning torvalds/linux $(KTAG) into $$SRC ..."; \
 	  mkdir -p "$$(dirname "$$SRC")"; \
-	  if [ -e "$$SRC" ]; then \
-	    echo "WARN: $$SRC left over from an interrupted run; removing and re-cloning"; \
-	    rm -rf "$$SRC"; \
-	  fi; \
 	  git clone --quiet --depth 1 --branch "$(KTAG)" https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git "$$SRC" || exit 1; \
 	fi; \
 	mkdir -p "$$SRC/include/generated"; \
@@ -97,8 +89,7 @@ modules_install:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
 
 clean:
-	rm -f gpu_tables.rs rust-project.json .vscode/settings.json
-	rm -rf .ide-src
+	rm -f gpu_tables.rs
 	@if [ -n "$(KDIR)" ] && [ -d "$(KDIR)" ]; then \
 		$(MAKE) -C $(KDIR) M=$(PWD) clean; \
 	fi

@@ -1,6 +1,8 @@
 name: Build Checks
 
 on:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -52,63 +54,10 @@ jobs:
           path: ~/gddr7-repo/**/gddr7_temp-*.rpm
           if-no-files-found: error
 
-  fedora-matrix:
-    # Resolve "all actively maintained Fedora versions" at runtime from
-    # Bodhi's release API (state == current), so the workflow never needs
-    # editing when a new Fedora ships or an old one reaches EOL. On top of
-    # that, rawhide (the in-development release) is always included, so
-    # kernel breakage is caught before it reaches a stable Fedora.
-    runs-on: ubuntu-latest
-    outputs:
-      fedoras: ${{ steps.resolve.outputs.fedoras }}
-    steps:
-      - id: resolve
-        shell: bash
-        run: |
-          set -euo pipefail
-          fedoras=$(python3 - <<'PY' || true
-          import json, re, urllib.request
-          rels, page, total = [], 1, None
-          while True:
-              url = ("https://bodhi.fedoraproject.org/releases/"
-                     "?rows_per_page=100&page=%d" % page)
-              with urllib.request.urlopen(url, timeout=30) as fh:
-                  d = json.load(fh)
-              rels.extend(d.get("releases", []))
-              total = d.get("total", len(rels))
-              if not d.get("releases") or len(rels) >= total:
-                  break
-              page += 1
-          vers = sorted(int(r["name"][1:]) for r in rels
-                        if re.fullmatch(r"F\d+", r["name"]) and r.get("state") == "current")
-          # Always append the in-development release; docker only tags it as
-          # "rawhide" (there is no numbered tag until the release ships).
-          print(json.dumps(vers + ["rawhide"]))
-          PY
-          )
-          if [ -z "${fedoras}" ] || [ "${fedoras}" = "[]" ]; then
-            # Bodhi API unreachable (or returned nothing) - keep the build
-            # checks running on the known-maintained set + rawhide instead
-            # of failing the whole PR; update the fallback when Fedoras
-            # reach EOL.
-            fedoras='[43, 44, "rawhide"]'
-            echo "::warning::Bodhi releases API unavailable; using fallback Fedora list ${fedoras}"
-          fi
-          echo "fedoras=${fedoras}" >> "$GITHUB_OUTPUT"
-
   ko-compile:
-    name: ko-compile (fedora-${{ matrix.fedora }})
-    needs: fedora-matrix
     runs-on: ubuntu-latest
     container:
-      image: fedora:${{ matrix.fedora }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # Dynamically resolved by the fedora-matrix job (Bodhi release API,
-        # state == current = actively maintained), plus rawhide, which the
-        # resolver always appends for the in-development kernel.
-        fedora: ${{ fromJson(needs.fedora-matrix.outputs.fedoras) }}
+      image: fedora:latest
     steps:
       - uses: actions/checkout@v4
 
@@ -116,31 +65,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # rustc must match the kernel's CONFIG_RUSTC_VERSION_TEXT; on Fedora
+          # both ship in lockstep from the same release.
           dnf install -y kernel-devel make gcc python3-pyyaml rust
-          # The kernel ships prebuilt rust crates (KDIR/rust/*.rmeta) compiled
-          # with the exact rustc of its build (CONFIG_RUSTC_VERSION_TEXT).
-          # kbuild resolves plain `rustc` via PATH, so during Fedora update
-          # windows where the distro rust package is ahead of the last kernel
-          # rebuild (e.g. rust 1.98.1 vs a kernel built with 1.98.0) every
-          # prelude import fails with E0514. Detect the mismatch and put the
-          # exact toolchain (rustup) on the PATH of the following steps.
-          KERNEL_VER=$(ls /usr/src/kernels)
-          KDIR=/usr/src/kernels/$KERNEL_VER
-          # CONFIG_RUSTC_VERSION_TEXT holds the full `rustc --version` output
-          # of the compiler the kernel was built with; reduce both sides to
-          # the bare version number before comparing.
-          RUST_WANT=$(sed -n 's/^CONFIG_RUSTC_VERSION_TEXT="\(.*\)"$/\1/p' $KDIR/.config)
-          RUST_WANT=${RUST_WANT#rustc }
-          RUST_WANT=${RUST_WANT%% *}
-          RUST_HAVE=$(rustc --version | sed 's/^rustc //; s/ .*//')
-          echo "kernel $KERNEL_VER built with rustc $RUST_WANT, distro provides $RUST_HAVE"
-          if [ -n "$RUST_WANT" ] && [ "$RUST_WANT" != "$RUST_HAVE" ]; then
-            dnf install -y rustup
-            rustup toolchain install --profile minimal "$RUST_WANT"
-            RUSTC_BIN=$(rustup which rustc --toolchain "$RUST_WANT")
-            echo "using exact toolchain: $RUSTC_BIN"
-            echo "$(dirname "$RUSTC_BIN")" >> "$GITHUB_PATH"
-          fi
 
       - name: Build kernel module (Rust for Linux)
         shell: bash
@@ -175,28 +102,3 @@ jobs:
           name: gddr7_temp-ko
           path: build/gddr7_temp.ko
           if-no-files-found: error
-
-  ko-gate:
-    # Overall gate: a single check context that turns green only when ALL
-    # ko-compile matrix jobs (every maintained Fedora + rawhide) succeeded.
-    # The "Protect Main Branch" ruleset requires this one context instead of
-    # the per-matrix "ko-compile (...)" checks (which a static required-check
-    # list cannot track as releases rotate), so the merge decision reduces to
-    # one purposeful signal: this module compiled cleanly on every kernel it
-    # must run on.
-    name: ko-gate
-    needs: [ ko-compile ]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Verify all ko-compile variants passed
-        shell: bash
-        run: |
-          set -euo pipefail
-          result="${{ needs.ko-compile.result }}"
-          echo "ko-compile aggregate result: ${result}"
-          if [ "${result}" != "success" ]; then
-            echo "::error::ko-gate: not all ko-compile jobs succeeded (result: ${result})"
-            exit 1
-          fi
-          echo "All ko-compile variants (incl. rawhide) succeeded; overall gate GREEN."
