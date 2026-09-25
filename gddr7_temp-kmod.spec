@@ -87,7 +87,8 @@ sed -e 's|@GDDR7_TEMP_VERSION@|%{gddr7_temp_version}|g' \
 # @GDDR7_TEMP_VERSION@ modinfo placeholder with the real version, rewrite
 # the modinfo array length to match (the string must live inside the
 # .modinfo section), and drop the now-unused raw-source length const.
-VLEN=$((8 + ${#%{gddr7_temp_version}} + 1))
+GV=%{gddr7_temp_version}
+VLEN=$((8 + ${#GV} + 1))
 sed -i -e 's|@GDDR7_TEMP_VERSION@|%{gddr7_temp_version}|g' \
     -e "s|\[u8; __GDDR7_TEMP_VERSION_LEN\]|[u8; $VLEN]|" \
     -e '/^const __GDDR7_TEMP_VERSION_LEN: usize = /d' \
