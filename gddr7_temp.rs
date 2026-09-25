@@ -14,7 +14,9 @@
  *     ours; devm callbacks would dangle after rmmod)
  *
  * Rust-for-Linux surface used: module!/Module trait, KBox/KVec,
- * kernel::io::{MmioRaw, Mmio, Io}, pr_*, Error/Result, Atomic.
+ * pr_*, Error/Result, Atomic. MMIO is a hand-rolled ioremap() region
+ * (see the MMIO region section) — deliberately no kernel::io dependency,
+ * because that API was redesigned in the 7.3 dev cycle.
  * FFI (no RFL abstraction exists for these in v7.1 — see
  * .ref-rust/RUST_FEASIBILITY_REPORT.md):
  *   - hwmon_device_register_with_info/unregister plus hand-written repr(C)
@@ -24,11 +26,9 @@
  */
 
 use core::ffi::{c_char, c_int, CStr};
-use core::ops::Deref;
 
 use kernel::prelude::*;
 use kernel::bindings;
-use kernel::io::{Io, Mmio, MmioRaw};
 use kernel::sync::atomic::{Acquire, Atomic, Release};
 
 /* Raw errno values for the callbacks that must return c_int directly. The
@@ -191,26 +191,38 @@ fn pm_put(dev: *const bindings::device) {
 }
 
 /* ---------------- MMIO region -----------------------------------------
- * One-shot ioremap() of a BAR0 sub-span. RFL has no wrapper for bare ioremap;
- * this follows the doc example in rust/kernel/io.rs. SIZE = 0 so reads go
- * through the runtime bounds check (try_read32) — spans are table-driven. */
+ * One-shot ioremap() of a BAR0 sub-span. Deliberately NOT built on
+ * kernel::io (MmioRaw/Mmio): that API was redesigned in the 7.3 dev cycle,
+ * while our only needs — volatile 32-bit reads at table-driven offsets plus
+ * the ioremap/iounmap lifetime pairing — are done directly on the
+ * ioremap() pointer instead. The runtime bounds check (offset + 4 <= span)
+ * mirrors the kernel wrapper's try_read32 semantics; ioremap/iounmap are
+ * C-stable on every kernel this module builds against (the rawhide CI gate
+ * keeps that honest). */
 
 struct IoRegion {
-    raw: MmioRaw<0>,
+    base: *const u8,        /* ioremap() result; `size` bytes valid  */
+    size: usize,              /* span passed to ioremap()             */
 }
 
-impl Deref for IoRegion {
-    type Target = Mmio<0>;
-    fn deref(&self) -> &Mmio<0> {
-        // SAFETY: `raw` was built from a valid ioremap() result.
-        unsafe { Mmio::from_raw(&self.raw) }
+impl IoRegion {
+    /* Fallible 32-bit read with runtime bounds check: same semantics as the
+     * kernel's Mmio::try_read32 (EINVAL past the end of the mapping). */
+    fn try_read32(&self, offset: usize) -> Result<u32> {
+        if offset + 4 > self.size {
+            return Err(EINVAL);
+        }
+        // SAFETY: [base + offset, base + offset + 4) was just bounds-checked
+        // against the ioremap span; volatile access per the kernel's
+        // ioremap contract (mirrors readl()/ioread32() on x86_64).
+        Ok(unsafe { self.base.add(offset).cast::<u32>().read_volatile() })
     }
 }
 
 impl Drop for IoRegion {
     fn drop(&mut self) {
         // SAFETY: mirrors the ioremap/iounmap pairing in gddr7_temp.c.
-        unsafe { bindings::iounmap(self.raw.addr() as *mut core::ffi::c_void); }
+        unsafe { bindings::iounmap(self.base as *mut core::ffi::c_void); }
     }
 }
 
@@ -221,9 +233,12 @@ fn map_region(res_start: u64, span: u64) -> Result<IoRegion> {
     if addr.is_null() {
         return Err(ENOMEM);
     }
-    // SAFETY: `addr` is a fresh non-NULL ioremap() result covering `span` bytes.
-    let raw = MmioRaw::new(addr as usize, span as usize)?;
-    Ok(IoRegion { raw })
+    // SAFETY: `addr` is a fresh non-NULL ioremap() result covering `span`
+    // bytes; every later access is bounds-checked against that span.
+    Ok(IoRegion {
+        base: addr as *const u8,
+        size: span as usize,
+    })
 }
 
 /* ---------------- sensor context / module state ----------------------- */
@@ -930,14 +945,22 @@ impl Drop for Gddr7Temp {
 }
 
 /* This kernel's module! macro has no `version:` key, so the .modinfo entry is
- * emitted by hand — same mechanism the macro uses for description. Lets
+ * emitted by hand - same mechanism the macro uses for description. Lets
  * `modinfo` and /sys/module/gddr7_temp/version identify the Rust build and
  * its release, and tell it apart from the legacy C module (which ships no
- * version). Keep in sync with %global gddr7_temp_version in
- * gddr7_temp-kmod.spec. */
+ * version). The @GDDR7_TEMP_VERSION@ placeholder is substituted by the
+ * sed in gddr7_temp-kmod.spec's %install before the akmod source tarball
+ * is created, so releasing only ever touches the spec (version +
+ * changelog). The same sed rewrites `[u8; __GDDR7_TEMP_VERSION_LEN]` to
+ * the real byte-string length (the string must live inside the .modinfo
+ * section, which is why this is a fixed-size array rather than a slice
+ * or pointer). In the raw source the const below must equal the length
+ * of the placeholder string. Local/CI builds compile the raw source and
+ * keep the placeholder in modinfo. */
+const __GDDR7_TEMP_VERSION_LEN: usize = 29;
 #[used(compiler)]
 #[link_section = ".modinfo"]
-static __GDDR7_TEMP_VERSION_MODINFO: [u8; 12] = *b"version=4.2\0";
+static __GDDR7_TEMP_VERSION_MODINFO: [u8; __GDDR7_TEMP_VERSION_LEN] = *b"version=@GDDR7_TEMP_VERSION@\0";
 
 module! {
     type: Gddr7Temp,
