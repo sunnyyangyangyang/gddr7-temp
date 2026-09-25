@@ -38,8 +38,12 @@ ide: gpu_tables.rs
 	  { echo "ERROR: $(KDIR) has no scripts/generate_rust_analyzer.py (kernel too old?)"; exit 1; }
 	@SRC="$(KDIR)"; [ -f "$$SRC/rust/kernel/lib.rs" ] || SRC="$(IDE_SRC)"; \
 	if [ ! -f "$$SRC/rust/kernel/lib.rs" ]; then \
-	  echo "INFO: $(KDIR) has no rust sources (prebuilt RPM); cloning torvalds/linux $(KTAG) into $$SRC ..."; \
+	  echo "INFO: $(KDIR) ships prebuilt rust libs only (no .rs sources - normal for distro kernel-devel packages); first run clones torvalds/linux $(KTAG) into $$SRC (cached in git-ignored .ide-src/, a few minutes) ..."; \
 	  mkdir -p "$$(dirname "$$SRC")"; \
+	  if [ -e "$$SRC" ]; then \
+	    echo "WARN: $$SRC left over from an interrupted run; removing and re-cloning"; \
+	    rm -rf "$$SRC"; \
+	  fi; \
 	  git clone --quiet --depth 1 --branch "$(KTAG)" https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git "$$SRC" || exit 1; \
 	fi; \
 	mkdir -p "$$SRC/include/generated"; \
