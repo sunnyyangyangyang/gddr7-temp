@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.2
+%global gddr7_temp_version 4.3
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -135,6 +135,14 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Thu Sep 24 2026 Sunny Yang <yxh9956@gmail.com> - 4.3-1
+- Build compatibility with the kernel 7.3 (rawhide) redesign of
+  rust/kernel/io.rs: IoRegion drops its kernel::io (MmioRaw/Mmio)
+  dependency and performs volatile 32-bit reads directly on the
+  ioremap() pointer, so one source tree compiles against every
+  kernel generation; CI now gates merges on all maintained Fedora
+  releases plus rawhide
+
 * Mon Sep 21 2026 Sunny Yang <yxh9956@gmail.com> - 4.2-1
 - Add RTX 5060 Ti (GB206 / 0x2d04): GDDR7 DQR, 2 VRAM modules
   (128-bit/64 heuristic, unverified on real hardware); Blackwell BJT
