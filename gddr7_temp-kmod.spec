@@ -71,7 +71,6 @@ cp %{SOURCE3} .
 cp %{SOURCE4} .
 cp %{SOURCE5} .
 cp %{SOURCE6} .
-
 %install
 # --- Create and install the kmod SRPM for akmods ---
 install -d %{buildroot}%{_usrsrc}/akmods/
@@ -82,6 +81,21 @@ mkdir -p "$SRPM_TOPDIR"/{SOURCES,SPECS}
 sed -e 's|@GDDR7_TEMP_VERSION@|%{gddr7_temp_version}|g' \
     -e 's|@RELEASE@|%{release}|g' \
     %{SOURCE2} > "$SRPM_TOPDIR"/SPECS/gddr7_temp-kmod.spec
+
+# --- Inject the concrete version into the modinfo placeholder of the kmod
+# --- source. The version string must live inside the .modinfo section
+# --- (fixed-size array), so the placeholder substitution also rewrites the
+# --- array length and drops the raw-source-only length const. The GV
+# --- indirection keeps the shell length operator POSIX: spec scriptlets run
+# --- under /bin/sh, which rejects a bare ${#literal} after the rpm macro
+# --- expansion (mock's sh died on it with "bad substitution").
+GV=%{gddr7_temp_version}
+VLEN=$((8 + ${#GV} + 1))
+sed -i -e 's|@GDDR7_TEMP_VERSION@|%{gddr7_temp_version}|g' \
+    -e "s|\\[u8; __GDDR7_TEMP_VERSION_LEN\\]|[u8; $VLEN]|" \
+    -e '/^const __GDDR7_TEMP_VERSION_LEN: usize = /d' \
+    %{_builddir}/gddr7_temp-%{version}/gddr7_temp.rs
+
 
 tar -czf "$SRPM_TOPDIR"/SOURCES/gddr7_temp-kmod-%{version}.tar.gz \
     --transform "s|^gddr7_temp-%{version}|gddr7_temp-kmod-%{version}|" \
