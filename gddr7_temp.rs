@@ -944,14 +944,22 @@ impl Drop for Gddr7Temp {
 }
 
 /* This kernel's module! macro has no `version:` key, so the .modinfo entry is
- * emitted by hand — same mechanism the macro uses for description. Lets
+ * emitted by hand - same mechanism the macro uses for description. Lets
  * `modinfo` and /sys/module/gddr7_temp/version identify the Rust build and
  * its release, and tell it apart from the legacy C module (which ships no
- * version). Keep in sync with %global gddr7_temp_version in
- * gddr7_temp-kmod.spec. */
+ * version). The @GDDR7_TEMP_VERSION@ placeholder is substituted by the
+ * sed in gddr7_temp-kmod.spec's %install before the akmod source tarball
+ * is created, so releasing only ever touches the spec (version +
+ * changelog). The same sed rewrites `[u8; __GDDR7_TEMP_VERSION_LEN]` to
+ * the real byte-string length (the string must live inside the .modinfo
+ * section, which is why this is a fixed-size array rather than a slice
+ * or pointer). In the raw source the const below must equal the length
+ * of the placeholder string. Local/CI builds compile the raw source and
+ * keep the placeholder in modinfo. */
+const __GDDR7_TEMP_VERSION_LEN: usize = 29;
 #[used(compiler)]
 #[link_section = ".modinfo"]
-static __GDDR7_TEMP_VERSION_MODINFO: [u8; 12] = *b"version=4.2\0";
+static __GDDR7_TEMP_VERSION_MODINFO: [u8; __GDDR7_TEMP_VERSION_LEN] = *b"version=@GDDR7_TEMP_VERSION@\0";
 
 module! {
     type: Gddr7Temp,
