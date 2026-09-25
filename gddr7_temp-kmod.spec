@@ -3,7 +3,7 @@
 %global _debuginfo_packages 0
 %global debug_package %{nil}
 %global _dracut_conf_d /usr/lib/dracut/dracut.conf.d
-%global gddr7_temp_version 4.2
+%global gddr7_temp_version 4.3
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
@@ -149,6 +149,12 @@ fi
 # Empty dependency anchor package
 
 %changelog
+* Fri Sep 25 2026 Sunny Yang <yxh9956@gmail.com> - 4.3-1
+- Re-land the post-rollback stack on the 7.3-compatible source:
+  C-stable ioremap MMIO (kernel::io-free) across the 7.3 rust io
+  redesign, make ide KTAG override and clean/clone self-heal, and
+  modinfo version via @GDDR7_TEMP_VERSION@ placeholder injected by
+  spec %install sed. Replaces the COPR 4.3-1 built from the VLEN-buggy spec.
 * Mon Sep 21 2026 Sunny Yang <yxh9956@gmail.com> - 4.2-1
 - Add RTX 5060 Ti (GB206 / 0x2d04): GDDR7 DQR, 2 VRAM modules
   (128-bit/64 heuristic, unverified on real hardware); Blackwell BJT
