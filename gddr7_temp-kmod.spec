@@ -7,7 +7,7 @@
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Kernel module to read NVIDIA GPU GDDR7 DQR and THERM temperature sensors
 
 License:        GPL-2.0-only
@@ -36,7 +36,7 @@ Requires:       %{name}-kmod = %{?epoch:%{epoch}:}%{version}-%{release}
 Requires:       %{name}-kmod-common = %{?epoch:%{epoch}:}%{version}-%{release}
 
 # Generate akmod metadata
-%{expand:%(kmodtool --target %{_target_cpu} --kmodname %{name} --akmod 2>/dev/null) }
+%{expand:%(kmodtool --target %{_target_cpu} --kmodname %{name} --akmod) }
 
 %description
 gddr7_temp is a kernel module, written in Rust for Linux, that reads NVIDIA
