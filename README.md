@@ -119,6 +119,7 @@ Pre-built RPMs are available via COPR. Subscribe to the repo and install:
 ```bash
 sudo dnf copr enable sunnyyang/gddr7-temp
 sudo dnf install gddr7_temp
+sudo systemctl enable --now gddr7_temp-load.service
 ```
 
 The spec file uses the **akmod** build pattern, so the kernel module is compiled automatically for your running kernel after installation (the akmods build needs a Rust-enabled kernel).
