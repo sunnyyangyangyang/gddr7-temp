@@ -20,9 +20,6 @@ Source0:        gddr7_temp-kmod-%{version}.tar.gz
 
 ExclusiveArch:  x86_64
 
-# get the needed BuildRequires (in parts depending on what we build for)
-%global AkmodsBuildRequires %{_bindir}/kmodtool
-BuildRequires:  %{AkmodsBuildRequires}
 BuildRequires:  gcc, make, python3, python3-pyyaml
 # Rust for Linux module: rustc must match the kernel's CONFIG_RUSTC_VERSION_TEXT
 BuildRequires:  rust

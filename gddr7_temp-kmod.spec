@@ -7,7 +7,7 @@
 
 Name:           gddr7_temp
 Version:        %{gddr7_temp_version}
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Kernel module to read NVIDIA GPU GDDR7 DQR and THERM temperature sensors
 
 License:        GPL-2.0-only
@@ -23,11 +23,11 @@ Source6:        gen_offsets.py
 # Akmod BuildRequires
 BuildRequires:  kmodtool
 BuildRequires:  akmods
-BuildRequires:  gcc make rpm-build python3 python3-pyyaml
+BuildRequires:  gcc make rpm-build 
 BuildRequires:  kernel-devel
 BuildRequires:  systemd-rpm-macros
 # Rust for Linux module: rustc must match the kernel's CONFIG_RUSTC_VERSION_TEXT
-BuildRequires:  rust
+
 
 # Runtime Requirements
 Requires:       systemd
@@ -36,6 +36,7 @@ Requires:       %{name}-kmod = %{?epoch:%{epoch}:}%{version}-%{release}
 Requires:       %{name}-kmod-common = %{?epoch:%{epoch}:}%{version}-%{release}
 
 # Generate akmod metadata
+%global AkmodsBuildRequires rust, python3, python3-pyyaml
 %{expand:%(kmodtool --target %{_target_cpu} --kmodname %{name} --akmod) }
 
 %description
